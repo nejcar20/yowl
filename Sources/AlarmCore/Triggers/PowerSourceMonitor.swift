@@ -1,5 +1,6 @@
 import Foundation
 import IOKit.ps
+@preconcurrency import CoreFoundation
 
 public protocol PowerSourceMonitoring: AnyObject {
     var isOnACPower: Bool { get }
@@ -7,10 +8,12 @@ public protocol PowerSourceMonitoring: AnyObject {
     func stopMonitoring()
 }
 
-/// Real implementation. Verified working 2026-09-02.
+/// Real implementation using IOKit. Underlying IOKit calls were verified against
+/// the live system during planning, but this class is not exercised by the test suite.
 public final class IOKitPowerSourceMonitor: PowerSourceMonitoring {
     private var source: CFRunLoopSource?
     private var onChange: ((Bool) -> Void)?
+    private var lastKnownACPower: Bool = true
 
     public init() {}
 
@@ -18,11 +21,14 @@ public final class IOKitPowerSourceMonitor: PowerSourceMonitoring {
         guard let snapshot = IOPSCopyPowerSourcesInfo()?.takeRetainedValue(),
               let type = IOPSGetProvidingPowerSourceType(snapshot)?.takeUnretainedValue()
                   as String?
-        else { return false }
-        return type == kIOPMACPowerKey
+        else { return lastKnownACPower }
+        let isAC = type == kIOPMACPowerKey
+        lastKnownACPower = isAC
+        return isAC
     }
 
     public func startMonitoring(_ onChange: @escaping (Bool) -> Void) {
+        stopMonitoring()
         self.onChange = onChange
         let context = Unmanaged.passUnretained(self).toOpaque()
         let callback: IOPowerSourceCallbackType = { ctx in
@@ -43,6 +49,12 @@ public final class IOKitPowerSourceMonitor: PowerSourceMonitoring {
         }
         source = nil
         onChange = nil
+    }
+
+    deinit {
+        if let source {
+            CFRunLoopRemoveSource(CFRunLoopGetMain(), source, .defaultMode)
+        }
     }
 }
 
