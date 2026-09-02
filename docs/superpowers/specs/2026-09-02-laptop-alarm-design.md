@@ -152,6 +152,23 @@ tone; disarming cancels it.
 
 ### Disarm flow differs by build, as a direct consequence
 
+### Known limitations, stated plainly
+
+These are real and must not be papered over in marketing copy:
+
+- **Quitting the app silences the alarm.** The Quit menu item is disabled while
+  armed, but the Cmd-Q shortcut and Force Quit still terminate the process. Fully
+  preventing this needs `applicationShouldTerminate` to refuse, which risks an
+  unquittable app and is itself an App Store review risk (see the table above).
+  The audio state IS restored on every graceful termination path, so quitting
+  mid-alarm no longer leaves the Mac at maximum volume.
+- **Arming requires the charger to be connected** in Phase 1, because the charger
+  trigger fires on the AC-to-battery transition and there is no transition left
+  to observe if the machine is already on battery. `arm()` refuses rather than
+  claiming a protection it cannot deliver. Phase 3's lid and Wi-Fi triggers lift
+  this.
+- A thief with physical access can hold the power button.
+
 - **Direct build:** the alarm locks the screen, so unlocking the Mac *is* the
   disarm. The account password already proves ownership; no second secret to
   invent or forget. Siren continues over the lock screen.
