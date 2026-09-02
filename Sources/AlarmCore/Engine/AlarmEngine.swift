@@ -42,14 +42,19 @@ public final class AlarmEngine {
         guard passcodes.hasPasscode else { throw AlarmEngineError.noPasscodeSet }
         guard state == .disarmed else { return }
 
+        // State is set to .armed before any trigger is started so a trigger
+        // that calls back synchronously during start() (e.g. an
+        // already-tripped lid-angle sensor) lands on a real .armed state
+        // rather than a .disarmed one the reducer would silently no-op.
+        sleepAssertion?.acquire(reason: "LaptopAlarm armed")
+        state = reduce(state, .arm, now: clock.now)
+
         for trigger in triggers {
             let grace = trigger.graceSeconds
             try? trigger.start { [weak self] id in
                 self?.handleTrigger(id, graceSeconds: grace)
             }
         }
-        sleepAssertion?.acquire(reason: "LaptopAlarm armed")
-        state = reduce(state, .arm, now: clock.now)
     }
 
     @discardableResult

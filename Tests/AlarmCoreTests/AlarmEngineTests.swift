@@ -60,6 +60,33 @@ private func makeRig(graceSeconds: TimeInterval = 0, passcode: String = "1234") 
     #expect(rig.unavailable.fireCount == 0)
 }
 
+// Trigger-side counterpart to unavailableResponsesAreNeverFired: proves the
+// other half of capability gating (AlarmEngine.swift's
+// `triggers.filter(\.isAvailable)`), which currently has no coverage of its
+// own. This is the mechanism Phase 5's sandboxed build relies on to drop the
+// lid-angle trigger the sandbox forbids.
+@Test func unavailableTriggersAreNeverStartedOrAbleToFire() async throws {
+    let available = FakeTrigger(id: TriggerID("power"), isAvailable: true)
+    let unavailable = FakeTrigger(id: TriggerID("lid"), isAvailable: false)
+    let siren = FakeResponse(identifier: "siren")
+    let store = InMemoryPasscodeStore()
+    try? store.setPasscode("1234")
+    let engine = AlarmEngine(triggers: [available, unavailable],
+                             responses: [siren],
+                             clock: TestClock(),
+                             passcodes: store,
+                             sleepAssertion: FakeSleepAssertion())
+    try engine.arm()
+    // Pins that the engine never even registered it: if gating dropped it
+    // after starting it (or not at all), this would be true.
+    #expect(unavailable.isStarted == false)
+
+    unavailable.simulateFire()
+    await Task.yield()
+    #expect(engine.state == .armed)
+    #expect(siren.fireCount == 0)
+}
+
 @Test func graceDelaysFiring() async throws {
     let rig = makeRig(graceSeconds: 10)
     try rig.engine.arm()
