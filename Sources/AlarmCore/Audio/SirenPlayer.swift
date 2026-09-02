@@ -27,15 +27,39 @@ public final class AVSirenPlayer: SirenPlaying {
     /// Owned and mutated only by the render block; allocated in start(), deallocated in stop()
     private var oscillatorState: UnsafeMutablePointer<OscillatorState>?
     public private(set) var isPlaying = false
+    /// The sample rate the audio graph actually connected at, and the rate the
+    /// oscillator is generating at. These must be equal; when they were not,
+    /// the siren played about 9% off pitch. Exposed so a test can prove it.
+    public private(set) var connectedSampleRate: Double?
+    public private(set) var oscillatorSampleRate: Double?
 
     public init() {}
+
+    /// The sample rate the oscillator runs at. An engine that has never been
+    /// started can report 0 for its output format, hence the fallback.
+    public static func renderSampleRate(hardware: Double) -> Double {
+        hardware > 0 ? hardware : 44_100
+    }
+
+    /// The format the source node is created with AND connected with, so the
+    /// declared rate cannot drift from the rate the oscillator assumes.
+    public static func renderFormat(hardware: Double) -> AVAudioFormat? {
+        AVAudioFormat(standardFormatWithSampleRate: renderSampleRate(hardware: hardware),
+                      channels: 2)
+    }
 
     @discardableResult
     public func start() -> Bool {
         guard !isPlaying else { return true }
 
-        let format = engine.outputNode.inputFormat(forBus: 0)
-        let sampleRate = format.sampleRate > 0 ? format.sampleRate : 44_100
+        // The oscillator's rate and the connection's declared rate MUST be the
+        // same number. They were not: the rate was read from the output device
+        // (48 kHz here) while `connect(..., format: nil)` adopted the mixer's
+        // rate (44.1 kHz), so the tone came out about 9% off pitch. Both now
+        // derive from one function; `SirenFormatTests` pins that they agree.
+        let hardwareRate = engine.outputNode.inputFormat(forBus: 0).sampleRate
+        let sampleRate = Self.renderSampleRate(hardware: hardwareRate)
+        guard let renderFormat = Self.renderFormat(hardware: hardwareRate) else { return false }
 
         // Allocate oscillator state. The render block will own this and mutate it
         // without touching any main-actor-isolated state.
@@ -49,15 +73,18 @@ public final class AVSirenPlayer: SirenPlaying {
             sweepSeconds: 0.5
         ))
 
-        let node = AVAudioSourceNode(renderBlock: Self.makeRenderBlock(state: state))
+        let node = AVAudioSourceNode(format: renderFormat,
+                                     renderBlock: Self.makeRenderBlock(state: state))
 
         sourceNode = node
         oscillatorState = state
         engine.attach(node)
-        engine.connect(node, to: engine.mainMixerNode, format: nil)
+        engine.connect(node, to: engine.mainMixerNode, format: renderFormat)
         engine.mainMixerNode.outputVolume = 1.0
         do {
             try engine.start()
+            connectedSampleRate = node.outputFormat(forBus: 0).sampleRate
+            oscillatorSampleRate = state.pointee.sampleRate
             isPlaying = true
             return true
         } catch {
@@ -116,6 +143,8 @@ public final class AVSirenPlayer: SirenPlaying {
         guard isPlaying else { return }
         // Stop engine and detach node first, so the render block cannot run again.
         engine.stop()
+        connectedSampleRate = nil
+        oscillatorSampleRate = nil
         if let sourceNode { engine.detach(sourceNode) }
         sourceNode = nil
 

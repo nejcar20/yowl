@@ -31,8 +31,13 @@ struct MenuBarContent: View {
                 Text(warning).foregroundStyle(.orange).font(.caption)
             }
 
+            if !model.needsPasscodeSetup {
+                Divider()
+                SettingsSection(model: model)
+            }
+
             Divider()
-            // Quit is a kill switch: during the 10-second grace the screen is
+            // Quit is a kill switch: during any grace window the screen is
             // not locked yet, so a thief who recognises the app could otherwise
             // click Quit and end the alarm without ever meeting the passcode.
             // The passcode gates disarm; it must gate quit too.
@@ -43,14 +48,15 @@ struct MenuBarContent: View {
             }
         }
         .padding(12)
-        .frame(width: 240)
+        .frame(width: 280)
     }
 
     private var statusText: String {
         switch model.state {
         case .disarmed: "Disarmed"
         case .armed: "Armed"
-        case .grace: "Triggered — disarm now"
+        case .grace: model.graceRemaining.map { "Triggered — \($0)s to disarm" }
+                        ?? "Triggered — disarm now"
         case .firing: "ALARM"
         }
     }

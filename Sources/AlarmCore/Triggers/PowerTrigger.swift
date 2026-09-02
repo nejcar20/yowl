@@ -6,7 +6,8 @@ public final class PowerTrigger: Trigger {
     public let id = TriggerID("power")
     public var identifier: String { id.rawValue }
     public let isAvailable = true
-    public let graceSeconds: TimeInterval
+    public var isEnabled = true
+    public var graceSeconds: TimeInterval
 
     /// Only an AC -> battery edge fires this trigger, so arming while already
     /// on battery can never fire: the edge is gone. The engine uses this to
