@@ -152,12 +152,55 @@ tone; disarming cancels it.
 
 ### Disarm flow differs by build, as a direct consequence
 
+### Known limitations, stated plainly
+
+These are real and must not be papered over in marketing copy:
+
+- **Quitting the app silences the alarm.** The Quit menu item is disabled while
+  armed, but the Cmd-Q shortcut and Force Quit still terminate the process. Fully
+  preventing this needs `applicationShouldTerminate` to refuse, which risks an
+  unquittable app and is itself an App Store review risk (see the table above).
+  The audio state IS restored on every graceful termination path, so quitting
+  mid-alarm no longer leaves the Mac at maximum volume.
+- **Arming requires the charger to be connected** in Phase 1, because the charger
+  trigger fires on the AC-to-battery transition and there is no transition left
+  to observe if the machine is already on battery. `arm()` refuses rather than
+  claiming a protection it cannot deliver. Phase 3's lid and Wi-Fi triggers lift
+  this.
+- A thief with physical access can hold the power button.
+
 - **Direct build:** the alarm locks the screen, so unlocking the Mac *is* the
   disarm. The account password already proves ownership; no second secret to
   invent or forget. Siren continues over the lock screen.
 - **MAS build:** no screen lock, so an always-on-top panel takes an app passcode
   stored in the Keychain. Weaker, and honestly so — a thief can hold the power
   button. Documented, not hidden.
+
+## 5a. Per-trigger and per-response selection (Phase 2+)
+
+The user chooses which triggers and which responses are active. Someone in a
+cafe may want the charger trigger only; someone at a coworking desk may want
+camera motion but no siren until they are further away.
+
+**This is a second axis, not an extension of capability gating, and the two must
+not be merged.** `isAvailable` answers "can this run on this machine and in this
+build?" — it is what lets the sandboxed App Store build drop screen-lock and
+lid-angle, and the user must never be able to switch it on. The new axis answers
+"does the user want this one active?" A feature fires only when
+`isAvailable && isEnabled`.
+
+Consequences to design for:
+
+- Preferences persist across launches and are per-trigger and per-response.
+- The UI only offers toggles for features reporting `isAvailable`; an
+  unavailable feature is absent, not shown-but-disabled, so the App Store build
+  never advertises what it cannot do.
+- **Disabling every trigger must be refused at arm time**, reusing the Phase 1
+  `noArmableTrigger` pre-flight. The same rule applies: "Armed" must mean
+  protected. Disabling every *response* deserves at least a warning — an alarm
+  that detects theft and does nothing is not an alarm.
+- Defaults should be everything available switched on. A user who never opens
+  settings gets the most protection, not the least.
 
 ## 6. Alert transport (provider-agnostic)
 
