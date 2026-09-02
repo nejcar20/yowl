@@ -1,1 +1,0 @@
-// AlarmCore module
