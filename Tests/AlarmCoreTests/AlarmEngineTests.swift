@@ -72,7 +72,13 @@ private func makeRig(graceSeconds: TimeInterval = 0, passcode: String = "1234") 
     #expect(rig.siren.fireCount == 1)
 }
 
-@Test func disarmingDuringGraceCancelsTheAlarm() async throws {
+// Documents that disarming during grace returns to `.disarmed` and stays there
+// as time passes. This does NOT by itself prove the grace timer was cancelled:
+// the reducer's own no-op for `.graceExpired` while `.disarmed` would make this
+// pass even with cancellation removed. See
+// `staleGraceTimerCannotExpireALaterGracePeriod` below for the test that
+// actually pins cancellation.
+@Test func disarmingDuringGraceReturnsToDisarmedAndStaysThere() async throws {
     let rig = makeRig(graceSeconds: 10)
     try rig.engine.arm()
     rig.trigger.simulateFire()
@@ -81,6 +87,34 @@ private func makeRig(graceSeconds: TimeInterval = 0, passcode: String = "1234") 
     await Task.yield()
     #expect(rig.siren.fireCount == 0)
     #expect(rig.engine.state == .disarmed)
+}
+
+// Pins grace-timer cancellation for real. A stale, uncancelled timer from a
+// prior grace period must not be able to expire a *later* grace period early.
+//
+// Sequence (10s grace): arm; trigger at t=0 -> grace until t=10; disarm at
+// t=1 (this is the cancellation under test); re-arm at t=1; trigger again at
+// t=5 -> a new grace until t=15. Advancing to t=10 (the original, stale
+// deadline) must NOT fire the siren -- if `graceWork?.cancel()` were removed
+// from `disarm()`, the first timer would fire `.graceExpired` here while the
+// state is genuinely `.grace` (from the second arm cycle), cutting the user's
+// second disarm window short by 5 seconds. Only advancing to t=15, the real
+// deadline, should fire it.
+@Test func staleGraceTimerCannotExpireALaterGracePeriod() async throws {
+    let rig = makeRig(graceSeconds: 10)
+    try rig.engine.arm()
+    rig.trigger.simulateFire()                 // t=0: grace until t=10
+    rig.clock.advance(by: 1)                   // t=1
+    #expect(rig.engine.disarm(passcode: "1234") == true)
+    try rig.engine.arm()                       // re-armed at t=1
+    rig.clock.advance(by: 4)                   // t=5
+    rig.trigger.simulateFire()                 // grace until t=15
+    rig.clock.advance(by: 5)                   // t=10: original, stale deadline
+    await Task.yield()
+    #expect(rig.siren.fireCount == 0)
+    rig.clock.advance(by: 5)                   // t=15: the real deadline
+    await Task.yield()
+    #expect(rig.siren.fireCount == 1)
 }
 
 @Test func correctPasscodeStopsTheSiren() async throws {
