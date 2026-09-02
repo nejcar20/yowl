@@ -58,3 +58,37 @@ private let power = TriggerID("power")
 @Test func graceExpiredWhileDisarmedIsIgnored() {
     #expect(reduce(.disarmed, .graceExpired, now: t0) == .disarmed)
 }
+
+// Disarm while armed must return to disarmed.
+@Test func disarmingWhileArmedReturnsToDisarmed() {
+    #expect(reduce(.armed, .disarm, now: t0) == .disarmed)
+}
+
+// A second trigger arriving during the grace period must not reset or extend
+// the original deadline or replace the trigger id. The alarm preserves the
+// original until date and trigger that started the grace period.
+@Test func triggerDuringGracePreservesOriginalDeadlineAndTrigger() {
+    let grace = AlarmState.grace(until: t0.addingTimeInterval(10), trigger: power)
+    let other = TriggerID("lid")
+    let result = reduce(grace, .triggered(other, graceSeconds: 5), now: t0)
+    #expect(result == grace)
+}
+
+// Arm arriving during grace period is ignored; alarm stays in grace.
+@Test func armingDuringGraceIsIgnored() {
+    let grace = AlarmState.grace(until: t0.addingTimeInterval(10), trigger: power)
+    #expect(reduce(grace, .arm, now: t0) == grace)
+}
+
+// Arm arriving while alarm is firing is ignored; alarm continues sounding.
+@Test func armingWhileFiringIsIgnored() {
+    let firing = AlarmState.firing(trigger: power)
+    #expect(reduce(firing, .arm, now: t0) == firing)
+}
+
+// A stale grace timer firing after the alarm has already started sounding
+// must not affect the alarm state.
+@Test func graceExpiredWhileFiringIsIgnored() {
+    let firing = AlarmState.firing(trigger: power)
+    #expect(reduce(firing, .graceExpired, now: t0) == firing)
+}
