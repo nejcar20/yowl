@@ -24,26 +24,32 @@ public struct MotionScore: Equatable, Sendable {
 /// framework, a person walking past a static background produces a spurious
 /// shift of ~170 px. What rejects it is that warping by that transform makes
 /// the image *worse*, driving `explained` negative.
+///
+/// Measured behaviour, real Vision framework, 320x240:
+///
+///     textured scene, camera moved 3-160 px   explained +1.000   FIRES at every speed
+///     textured scene, person walks past       explained -0.481   quiet
+///     dark noisy room                         value     +0.001   quiet
+///     PERIODIC scene (blinds, tiles, brick)   explained +1.000   FIRES INDISCRIMINATELY
+///
+/// **Known limitation: periodic backgrounds.** Where the scene repeats — window
+/// blinds, tiled floors, brick, a radiator — translational registration is
+/// ambiguous: shifting by one stripe width aligns as well as the true shift, so
+/// the residual cannot tell a passer-by from the laptop being moved and both
+/// score high. Two guards were tried and both were worse than the disease: a cap
+/// on plausible shift made the detector blind to a snatch (the fast motion that
+/// matters most), and a left/right half-agreement rule disabled it whenever half
+/// the view was a plain wall. Neither is a tuning problem; both are structurally
+/// wrong for this measure.
+///
+/// The failure direction is at least the safe one — it over-fires rather than
+/// staying silent — and the live sensitivity readout exists so a user can find
+/// out in ten seconds whether their table is one of the bad ones. Solving it
+/// properly needs a different measure (feature-based registration with an
+/// inlier ratio, or optical flow coherence) and belongs in its own phase.
 public final class EgoMotionDetector {
     public let threshold: Double
     public let consecutiveFramesRequired: Int
-
-    /// A shift larger than this fraction of the frame width is registration
-    /// failure, not motion. At 5 fps a hand nudge moves the scene by tens of
-    /// pixels; measurements on periodic scenes (blinds, tiles) produced bogus
-    /// shifts of 200+ px on a 320 px frame, and those dominated the score.
-    static let maximumPlausibleShiftFraction = 0.15
-
-    /// Below this overlap the residual is averaged over too little of the frame
-    /// to mean anything, and `explained` is compared against a raw residual
-    /// measured elsewhere.
-    static let minimumOverlapFraction = 0.6
-
-    /// Left and right halves must agree on the shift to within this many
-    /// pixels. A real camera move displaces every part of the frame by the same
-    /// amount; a person crossing the view, or a periodic pattern aligning to the
-    /// wrong stripe, does not survive that check.
-    static let maximumHalfDisagreement = 4.0
 
     /// A scene with less frame-to-frame variation than this carries no
     /// information to register on — a dark room, or the lid part-closed. Sensor
@@ -106,35 +112,7 @@ public final class EgoMotionDetector {
         let shift = (dx * dx + dy * dy).squareRoot()
         let width = previous.width, height = previous.height
 
-        // Guard 1: an implausible shift is registration failure. Accepting it is
-        // what let a bogus 215 px shift on a striped background outscore the
-        // laptop genuinely being picked up.
-        guard shift <= Double(width) * Self.maximumPlausibleShiftFraction else {
-            return MotionScore(shift: shift, explained: 0, value: 0)
-        }
-
-        // Guard 2: the halves of the frame must agree. This is what separates
-        // "the camera moved" from "something moved in front of it": a genuine
-        // move displaces both halves identically, while a passer-by shows up in
-        // one half, and an ambiguous periodic pattern resolves differently in
-        // each. Registration alone cannot tell these apart -- measured, a person
-        // crossing a striped background scored higher than the laptop actually
-        // being picked up.
-        if let (leftShift, rightShift) = Self.halfShifts(previous: previous, current: current) {
-            let disagreement = ((leftShift.0 - rightShift.0) * (leftShift.0 - rightShift.0)
-                              + (leftShift.1 - rightShift.1) * (leftShift.1 - rightShift.1)).squareRoot()
-            guard disagreement <= Self.maximumHalfDisagreement else {
-                return MotionScore(shift: shift, explained: 0, value: 0)
-            }
-        }
-
         let ix = Int(dx.rounded()), iy = Int(dy.rounded())
-
-        // Guard 3: too little overlap left to measure anything honestly.
-        let overlap = Self.overlapFraction(width: width, height: height, dx: ix, dy: iy)
-        guard overlap >= Self.minimumOverlapFraction else {
-            return MotionScore(shift: shift, explained: 0, value: 0)
-        }
 
         // Both residuals are measured over the SAME overlap region. Comparing a
         // warped residual over a shrinking window against a raw residual over
@@ -144,7 +122,7 @@ public final class EgoMotionDetector {
                                                      dx: 0, dy: 0,
                                                      restrictedTo: (ix, iy))
 
-        // Guard 4: a scene with nothing happening in it carries no signal, and
+        // A scene with nothing happening in it carries no signal, and
         // dividing by a near-zero residual turns sensor noise into a siren.
         guard residualRaw >= Self.minimumSceneActivity else {
             return MotionScore(shift: shift, explained: 0, value: 0)
@@ -159,37 +137,11 @@ public final class EgoMotionDetector {
                                         restrictedTo: (ix, iy)),
             Self.meanAbsoluteDifference(previous.pixels, current.pixels,
                                         width: width, height: height, dx: -ix, dy: -iy,
-                                        restrictedTo: (ix, iy)))
+                                        restrictedTo: (-ix, -iy)))
 
         let explained = 1 - residualWarped / residualRaw
-        let value = (shift / Double(width)) * max(0, explained)
+        let value = (shift / Double(width)) * explained
         return MotionScore(shift: shift, explained: explained, value: value)
-    }
-
-    /// Registers the left and right halves independently. Returns nil when
-    /// either half cannot be registered, in which case the check is skipped
-    /// rather than treated as disagreement.
-    static func halfShifts(previous: GrayscaleFrame,
-                           current: GrayscaleFrame) -> ((Double, Double), (Double, Double))? {
-        let half = previous.width / 2
-        guard let previousLeft = previous.cropped(x: 0, width: half),
-              let currentLeft = current.cropped(x: 0, width: half),
-              let previousRight = previous.cropped(x: half, width: half),
-              let currentRight = current.cropped(x: half, width: half),
-              let left = rawShift(previousLeft, currentLeft),
-              let right = rawShift(previousRight, currentRight)
-        else { return nil }
-        return (left, right)
-    }
-
-    static func rawShift(_ a: GrayscaleFrame, _ b: GrayscaleFrame) -> (Double, Double)? {
-        guard let aImage = a.cgImage, let bImage = b.cgImage else { return nil }
-        let request = VNTranslationalImageRegistrationRequest(targetedCGImage: bImage, options: [:])
-        let handler = VNImageRequestHandler(cgImage: aImage, options: [:])
-        do { try handler.perform([request]) } catch { return nil }
-        guard let observation = request.results?.first as? VNImageTranslationAlignmentObservation
-        else { return nil }
-        return (Double(observation.alignmentTransform.tx), Double(observation.alignmentTransform.ty))
     }
 
     /// Fraction of the frame still overlapping after a shift of (dx, dy).

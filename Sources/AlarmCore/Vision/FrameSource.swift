@@ -11,6 +11,8 @@ public enum FrameSourceError: Error, Equatable {
 
 public protocol FrameSourcing: AnyObject {
     var isAvailable: Bool { get }
+    /// Raises the capture rate while the user is watching a live readout.
+    func setHighRate(_ high: Bool)
     /// Prompts for access if the user has not been asked yet. Returns whether
     /// capture is permitted. Called when the feature is switched on, so the
     /// answer is known before anything depends on it.
@@ -33,7 +35,6 @@ public final class CameraFrameSource: NSObject, FrameSourcing,
     private let session = AVCaptureSession()
     private let output = AVCaptureVideoDataOutput()
     private let queue = DispatchQueue(label: "com.jernejkocica.laptopalarm.frames")
-    private let framesPerSecond: Double
 
     /// Everything the capture callback touches. The callback runs on the
     /// capture queue, never the main actor, so it cannot legally read
@@ -48,12 +49,16 @@ public final class CameraFrameSource: NSObject, FrameSourcing,
     }
     private let captureState = OSAllocatedUnfairLock(initialState: CaptureState())
     private nonisolated let minimumInterval: TimeInterval
+    /// Raised while calibrating so the live number tracks the user's hand
+    /// instead of lagging a fifth of a second behind it.
+    private nonisolated let calibrationInterval: TimeInterval
+    private let isCalibrationRate = OSAllocatedUnfairLock(initialState: false)
     /// Stays main-actor isolated: only the frame crosses threads, never this.
     private var onFrame: ((GrayscaleFrame) -> Void)?
 
-    public init(framesPerSecond: Double = 5) {
-        self.framesPerSecond = max(1, framesPerSecond)
+    public init(framesPerSecond: Double = 5, calibrationFramesPerSecond: Double = 20) {
         self.minimumInterval = 1.0 / max(1, framesPerSecond)
+        self.calibrationInterval = 1.0 / max(1, calibrationFramesPerSecond)
         super.init()
     }
 
@@ -69,6 +74,10 @@ public final class CameraFrameSource: NSObject, FrameSourcing,
         AVCaptureDevice.default(for: .video) != nil
             && AVCaptureDevice.authorizationStatus(for: .video) != .denied
             && AVCaptureDevice.authorizationStatus(for: .video) != .restricted
+    }
+
+    public func setHighRate(_ high: Bool) {
+        isCalibrationRate.withLock { $0 = high }
     }
 
     public func start(onFrame: @escaping (GrayscaleFrame) -> Void) throws {
@@ -127,7 +136,8 @@ public final class CameraFrameSource: NSObject, FrameSourcing,
         let now = Date()
         let shouldDeliver = captureState.withLock { state -> Bool in
             guard state.isRunning,
-                  now.timeIntervalSince(state.lastDelivery) >= minimumInterval
+                  now.timeIntervalSince(state.lastDelivery)
+                      >= (isCalibrationRate.withLock { $0 } ? calibrationInterval : minimumInterval)
             else { return false }
             state.lastDelivery = now
             return true
@@ -183,6 +193,9 @@ public final class FakeFrameSource: FrameSourcing {
         requestAccessCallCount += 1
         return accessGranted
     }
+
+    public private(set) var isHighRate = false
+    public func setHighRate(_ high: Bool) { isHighRate = high }
 
     public func start(onFrame: @escaping (GrayscaleFrame) -> Void) throws {
         guard isAvailable else { throw FrameSourceError.cameraUnavailable }

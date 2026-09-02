@@ -120,7 +120,9 @@ private func makeEngine(triggers: [any Trigger], responses: [any Response],
     let failing = ThrowingTrigger(id: TriggerID("motion"))
     let sleep = FakeSleepAssertion()
     let engine = makeEngine(triggers: [failing], responses: [], sleep: sleep)
-    #expect(throws: AlarmEngineError.noArmableTrigger) { try engine.arm() }
+    // A distinct error from "nothing can fire right now": telling a user whose
+    // camera failed to plug in the charger is the confusion this prevents.
+    #expect(throws: AlarmEngineError.noTriggerStarted) { try engine.arm() }
     #expect(engine.state == .disarmed)
     #expect(sleep.isHeld == false)
 }

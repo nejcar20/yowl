@@ -2,17 +2,6 @@ import Foundation
 import Security
 import CommonCrypto
 
-public extension PasscodeStoring {
-    /// Shared by every store: verification and replacement are the same two
-    /// steps everywhere, and duplicating them is how one copy loses the check.
-    func changePasscode(current: String, new: String) throws -> Bool {
-        guard !new.isEmpty else { throw PasscodeError.empty }
-        guard verify(current) else { return false }
-        try setPasscode(new)
-        return true
-    }
-}
-
 public enum PasscodeError: Error, Equatable {
     case empty
     case cryptoFailure(Int32)
@@ -24,11 +13,6 @@ public protocol PasscodeStoring: AnyObject {
     func setPasscode(_ passcode: String) throws
     func verify(_ passcode: String) -> Bool
     func clear() throws
-    /// Replaces the passcode, proving knowledge of the current one first.
-    /// Returns `false` when `current` is wrong, leaving the stored passcode
-    /// untouched. Without this check, changing the passcode would be a
-    /// one-click disarm bypass.
-    func changePasscode(current: String, new: String) throws -> Bool
 }
 
 /// Salt + PBKDF2-SHA256 hash, serialised as `salt || hash`.

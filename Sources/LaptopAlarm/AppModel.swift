@@ -21,6 +21,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var graceSeconds: TimeInterval = GraceLimits.defaultValue
     @Published private(set) var launchAtLogin = false
     @Published private(set) var settingsMessage: String?
+    @Published private(set) var powerEnabled = true
     @Published private(set) var motionEnabled = false
     @Published private(set) var liveMotionScore: Double?
     @Published private(set) var isCalibrating = false
@@ -93,6 +94,7 @@ final class AppModel: ObservableObject {
         motion.isEnabled = motion.isAvailable
             && preferences.isEnabled(motion.identifier, default: false)
         motionEnabled = motion.isActive
+        powerEnabled = trigger.isActive
         sirenEnabled = siren.isActive
         screenLockEnabled = lock.isActive
         graceSeconds = preferences.graceSeconds
@@ -145,6 +147,20 @@ final class AppModel: ObservableObject {
     /// meets the passcode.
     var settingsLocked: Bool { isArmed }
 
+    /// Three different reasons arming can be refused, and telling the user the
+    /// wrong one is worse than saying nothing.
+    private var armRefusalReason: String {
+        if !powerEnabled && !motionEnabled {
+            return "Turn on at least one trigger in Settings — nothing is set to watch for anything."
+        }
+        if powerEnabled && !powerTrigger.canFireNow {
+            return motionEnabled
+                ? "Plug in the charger, or the charger trigger has nothing left to detect."
+                : "Plug in the charger to arm. The alarm fires when the charger is pulled."
+        }
+        return "Nothing can currently watch for a theft."
+    }
+
     /// A response the user can switch off. Only the siren and the screen lock
     /// today; trigger toggles stay hidden until a second trigger exists, since
     /// unchecking the only one just makes arming refuse.
@@ -170,6 +186,14 @@ final class AppModel: ObservableObject {
     }
 
     var motionAvailable: Bool { motionTrigger.isAvailable }
+
+    func setPowerEnabled(_ enabled: Bool) {
+        guard !settingsLocked else { return }
+        let applied = enabled && powerTrigger.isAvailable
+        powerTrigger.isEnabled = applied
+        preferences.setEnabled(applied, for: powerTrigger.identifier)
+        powerEnabled = powerTrigger.isActive
+    }
 
     func setMotionEnabled(_ enabled: Bool) {
         guard !settingsLocked else { return }
@@ -285,14 +309,11 @@ final class AppModel: ObservableObject {
         return status == .enabled || status == .requiresApproval
     }
 
-    func changePasscode(current: String, new: String) {
+    func changePasscode(to newPasscode: String) {
         guard !settingsLocked else { return }
         do {
-            if try passcodes.changePasscode(current: current, new: new) {
-                settingsMessage = "Passcode changed."
-            } else {
-                settingsMessage = "That is not the current passcode."
-            }
+            try passcodes.setPasscode(newPasscode)
+            settingsMessage = "Passcode changed."
         } catch PasscodeError.empty {
             settingsMessage = "Enter a new passcode."
         } catch {
@@ -303,12 +324,13 @@ final class AppModel: ObservableObject {
     var isArmed: Bool { state != .disarmed }
     var isFiring: Bool { if case .firing = state { return true }; return false }
 
-    /// First-run only. Guarded because an unguarded overwrite is a disarm
-    /// bypass: set a new passcode mid-alarm, then use it to stop the siren
-    /// without ever knowing the old one. Changing an existing passcode goes
-    /// through `changePasscode`, which demands the current one.
+    /// Settable whenever disarmed. The armed guard is the whole protection: it
+    /// stops the obvious bypass of setting a new passcode mid-alarm and using it
+    /// to silence the siren. Demanding the *current* passcode on top adds
+    /// nothing — a Mac sitting unlocked and disarmed has already lost, and the
+    /// alarm is not what is protecting it at that point.
     func setPasscode(_ passcode: String) {
-        guard !settingsLocked, !passcodes.hasPasscode else { return }
+        guard !settingsLocked else { return }
         do {
             try passcodes.setPasscode(passcode)
             needsPasscodeSetup = false
@@ -348,7 +370,10 @@ final class AppModel: ObservableObject {
             errorMessage = "Set a passcode before arming."
             warningMessage = nil
         } catch AlarmEngineError.noArmableTrigger {
-            errorMessage = "Plug in the charger to arm. The alarm fires when the charger is pulled."
+            errorMessage = armRefusalReason
+            warningMessage = nil
+        } catch AlarmEngineError.noTriggerStarted {
+            errorMessage = "Nothing could start watching. If movement detection is on, check camera access in System Settings ▸ Privacy & Security ▸ Camera."
             warningMessage = nil
         } catch {
             errorMessage = "Could not arm."

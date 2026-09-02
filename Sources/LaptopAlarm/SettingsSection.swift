@@ -9,7 +9,6 @@ import AlarmCore
 struct SettingsSection: View {
     @ObservedObject var model: AppModel
     @State private var expanded = false
-    @State private var currentPasscode = ""
     @State private var newPasscode = ""
 
     var body: some View {
@@ -20,11 +19,12 @@ struct SettingsSection: View {
                         .font(.caption).foregroundStyle(.secondary)
                 }
 
-                if model.motionAvailable {
-                    Group {
-                        Text("What triggers the alarm").font(.caption).foregroundStyle(.secondary)
-                        Text("Charger unplugged — always on")
-                            .font(.caption2).foregroundStyle(.secondary)
+                Group {
+                    Text("What triggers the alarm").font(.caption).foregroundStyle(.secondary)
+                    Toggle("Charger unplugged", isOn: Binding(
+                        get: { model.powerEnabled },
+                        set: { model.setPowerEnabled($0) }))
+                    if model.motionAvailable {
                         Toggle("Laptop is moved (uses the camera)", isOn: Binding(
                             get: { model.motionEnabled },
                             set: { model.setMotionEnabled($0) }))
@@ -44,13 +44,17 @@ struct SettingsSection: View {
                                 }
                             }
                             if model.isCalibrating {
-                                Text("Nudge the laptop: the number should jump. Wave a hand in front of it: the number should not.")
+                                Text("Nudge the laptop: the number should jump. Wave a hand in front of it: the number should not. If waving DOES move it, your background is too repetitive for this — blinds, tiles and brick confuse it.")
                                     .font(.caption2).foregroundStyle(.secondary)
                             }
                         }
                     }
-                    Divider()
+                    if !model.powerEnabled && !model.motionEnabled {
+                        Text("Nothing is set to watch for anything — arming will refuse.")
+                            .font(.caption2).foregroundStyle(.orange)
+                    }
                 }
+                Divider()
 
                 Group {
                     Text("When the alarm fires").font(.caption).foregroundStyle(.secondary)
@@ -99,14 +103,12 @@ struct SettingsSection: View {
 
                 Group {
                     Text("Change passcode").font(.caption).foregroundStyle(.secondary)
-                    SecureField("Current", text: $currentPasscode)
-                    SecureField("New", text: $newPasscode)
+                    SecureField("New passcode", text: $newPasscode)
                     Button("Change") {
-                        model.changePasscode(current: currentPasscode, new: newPasscode)
-                        currentPasscode = ""
+                        model.changePasscode(to: newPasscode)
                         newPasscode = ""
                     }
-                    .disabled(currentPasscode.isEmpty || newPasscode.isEmpty)
+                    .disabled(newPasscode.isEmpty)
                 }
 
                 if let message = model.settingsMessage {

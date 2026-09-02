@@ -6,6 +6,11 @@ public enum AlarmEngineError: Error, Equatable {
     /// produce a shield icon and zero protection. Deliberately blocks the arm
     /// instead of warning: "Armed" must mean protected.
     case noArmableTrigger
+    /// Triggers were enabled and could have fired, but none would start — a
+    /// camera that will not open, say. Distinct from `noArmableTrigger` because
+    /// telling the user to plug in the charger when the camera failed is
+    /// exactly the confusion this error exists to prevent.
+    case noTriggerStarted
 }
 
 /// Orchestrates triggers, responses and the state machine.
@@ -109,10 +114,10 @@ public final class AlarmEngine {
         guard !started.isEmpty else {
             // Nothing is watching. Undo and refuse, rather than showing a
             // shield icon over no protection.
-            started.forEach { $0.stop() }
             sleepAssertion?.release()
+            sleepAssertionFailed = false
             state = reduce(state, .disarm, now: clock.now)
-            throw AlarmEngineError.noArmableTrigger
+            throw AlarmEngineError.noTriggerStarted
         }
     }
 

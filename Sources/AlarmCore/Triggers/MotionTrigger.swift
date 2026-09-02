@@ -77,6 +77,7 @@ public final class MotionTrigger: Trigger {
         // state change, so the exclusion lives here rather than only in the UI.
         guard onFire == nil else { throw MotionTriggerError.armed }
         isCalibrating = true
+        source.setHighRate(true)
         detector.reset()
         try source.start { [weak self] frame in
             guard let self else { return }
@@ -87,6 +88,7 @@ public final class MotionTrigger: Trigger {
 
     public func stopCalibration() {
         isCalibrating = false
+        source.setHighRate(false)
         source.stop()
         detector.reset()
     }

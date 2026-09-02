@@ -52,45 +52,21 @@ import Foundation
     #expect(store.verify("hunter2") == false)
 }
 
-@Test func changingPasscodeInvalidatesTheOldOne() throws {
+// Replacing a passcode is a plain overwrite. The protection is that settings
+// are frozen while armed, so this is unreachable mid-alarm; demanding the old
+// passcode on top adds nothing, because a Mac sitting unlocked and disarmed has
+// already lost.
+@Test func replacingThePasscodeOverwritesTheOldOne() throws {
     let store = InMemoryPasscodeStore()
     try store.setPasscode("old")
     try store.setPasscode("new")
-    #expect(store.verify("old") == false)
-    #expect(store.verify("new") == true)
-}
-
-// Changing the passcode must prove knowledge of the current one. Without this
-// it is a one-click disarm bypass: set a new passcode, then use it to stop the
-// siren without ever knowing the old one.
-@Test func changingThePasscodeRequiresTheCurrentOne() throws {
-    let store = InMemoryPasscodeStore()
-    try store.setPasscode("old")
-    #expect(try store.changePasscode(current: "wrong", new: "new") == false)
-    #expect(store.verify("old") == true)
-    #expect(store.verify("new") == false)
-}
-
-@Test func changingThePasscodeWithTheCorrectCurrentOneSucceeds() throws {
-    let store = InMemoryPasscodeStore()
-    try store.setPasscode("old")
-    #expect(try store.changePasscode(current: "old", new: "new") == true)
     #expect(store.verify("new") == true)
     #expect(store.verify("old") == false)
 }
 
-@Test func changingToAnEmptyPasscodeIsRejected() throws {
+@Test func replacingWithAnEmptyPasscodeIsRejectedAndKeepsTheOldOne() throws {
     let store = InMemoryPasscodeStore()
     try store.setPasscode("old")
-    #expect(throws: PasscodeError.self) { _ = try store.changePasscode(current: "old", new: "") }
-    #expect(store.verify("old") == true)
-}
-
-// A failed change must not destroy the existing passcode.
-@Test func aFailedChangeLeavesTheOriginalPasscodeIntact() throws {
-    let store = InMemoryPasscodeStore()
-    try store.setPasscode("old")
-    _ = try? store.changePasscode(current: "wrong", new: "new")
-    #expect(store.hasPasscode == true)
+    #expect(throws: PasscodeError.self) { try store.setPasscode("") }
     #expect(store.verify("old") == true)
 }
