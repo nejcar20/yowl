@@ -252,9 +252,9 @@ substance is unit-testable without a physical theft.
 
 ## 10. Commercial prerequisites
 
-- **Apple Developer Program** (EUR 99/yr) required for both `Developer ID
-  Application` and `Apple Distribution` certificates. Enrollment can take days and
-  blocks shipping, not building — start immediately.
+- **Apple Developer Program** — enrolled. The `Developer ID Application` and
+  `Apple Distribution` certificates still need generating from that account
+  (Xcode -> Settings -> Accounts -> Manage Certificates) before Phase 6.
 - **EU VAT** applies from the first consumer sale. Paddle or Lemon Squeezy as
   merchant of record handles it for direct sales; Apple handles it for MAS.
 - **Licensing** for the direct build: license key activation validated once and
