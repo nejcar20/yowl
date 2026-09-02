@@ -48,7 +48,9 @@ public struct MotionScore: Equatable, Sendable {
 /// properly needs a different measure (feature-based registration with an
 /// inlier ratio, or optical flow coherence) and belongs in its own phase.
 public final class EgoMotionDetector {
-    public let threshold: Double
+    /// Settable so the sensitivity slider takes effect without rebuilding the
+    /// detector — otherwise it would only apply after a relaunch.
+    public var threshold: Double
     public let consecutiveFramesRequired: Int
 
     /// A scene with less frame-to-frame variation than this carries no

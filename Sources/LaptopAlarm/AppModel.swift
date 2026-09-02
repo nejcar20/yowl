@@ -25,6 +25,8 @@ final class AppModel: ObservableObject {
     @Published private(set) var motionEnabled = false
     @Published private(set) var liveMotionScore: Double?
     @Published private(set) var isCalibrating = false
+    @Published private(set) var motionSensitivity = MotionSensitivity.sensitivity(
+        forThreshold: MotionSensitivity.defaultValue)
 
     private let engine: AlarmEngine
     private let passcodes: KeychainPasscodeStore
@@ -46,9 +48,10 @@ final class AppModel: ObservableObject {
         let trigger = PowerTrigger(monitor: IOKitPowerSourceMonitor(),
                                    graceSeconds: preferences.graceSeconds)
         self.powerTrigger = trigger
-        let motion = MotionTrigger(source: CameraFrameSource(framesPerSecond: 5),
-                                   detector: EgoMotionDetector(),
-                                   graceSeconds: preferences.graceSeconds)
+        let motion = MotionTrigger(
+            source: CameraFrameSource(framesPerSecond: 5),
+            detector: EgoMotionDetector(threshold: preferences.motionThreshold),
+            graceSeconds: preferences.graceSeconds)
         self.motionTrigger = motion
         let siren = SirenResponse(player: AVSirenPlayer(),
                                   audio: CoreAudioOutputControl())
@@ -95,6 +98,7 @@ final class AppModel: ObservableObject {
             && preferences.isEnabled(motion.identifier, default: false)
         motionEnabled = motion.isActive
         powerEnabled = trigger.isActive
+        motionSensitivity = MotionSensitivity.sensitivity(forThreshold: preferences.motionThreshold)
         sirenEnabled = siren.isActive
         screenLockEnabled = lock.isActive
         graceSeconds = preferences.graceSeconds
@@ -246,6 +250,19 @@ final class AppModel: ObservableObject {
     }
 
     var motionThreshold: Double { motionTrigger.detector.threshold }
+
+    /// Presented as sensitivity, which runs the opposite way to the threshold it
+    /// sets. Takes effect immediately, including mid-calibration, so the user
+    /// can drag the slider while watching the live number and see the colour
+    /// change at the point they choose.
+    func setMotionSensitivity(_ sensitivity: Double) {
+        guard !settingsLocked else { return }
+        let threshold = MotionSensitivity.threshold(forSensitivity: sensitivity)
+        preferences.motionThreshold = threshold
+        let applied = preferences.motionThreshold
+        motionTrigger.detector.threshold = applied
+        motionSensitivity = MotionSensitivity.sensitivity(forThreshold: applied)
+    }
 
     var sirenAvailable: Bool { siren.isAvailable }
     var screenLockAvailable: Bool { screenLock.isAvailable }

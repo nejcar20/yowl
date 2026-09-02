@@ -43,6 +43,18 @@ struct SettingsSection: View {
                                         .foregroundStyle(score > model.motionThreshold ? Color.red : Color.secondary)
                                 }
                             }
+                            HStack {
+                                Text("Sensitivity").font(.caption2).foregroundStyle(.secondary)
+                                Slider(value: Binding(get: { model.motionSensitivity },
+                                                      set: { model.setMotionSensitivity($0) }),
+                                       in: 0...1)
+                                Text(String(format: "%.4f", model.motionThreshold))
+                                    .font(.caption2.monospacedDigit())
+                                    .foregroundStyle(.secondary)
+                            }
+                            Text("Right for more sensitive. The alarm fires when the number above crosses this one.")
+                                .font(.caption2).foregroundStyle(.secondary)
+
                             if model.isCalibrating {
                                 Text("Nudge the laptop: the number should jump. Wave a hand in front of it: the number should not. If waving DOES move it, your background is too repetitive for this — blinds, tiles and brick confuse it.")
                                     .font(.caption2).foregroundStyle(.secondary)
