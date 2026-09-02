@@ -50,24 +50,26 @@ public final class AVSirenPlayer: SirenPlaying {
         ))
 
         let node = AVAudioSourceNode { _, _, frameCount, audioBufferList in
+            var osc = state.pointee  // Load state once before loop
             let buffers = UnsafeMutableAudioBufferListPointer(audioBufferList)
             for frame in 0..<Int(frameCount) {
                 // Triangle sweep between the two tones.
-                let cyclePosition = state.pointee.elapsed
-                    .truncatingRemainder(dividingBy: state.pointee.sweepSeconds * 2) / state.pointee.sweepSeconds
+                let cyclePosition = osc.elapsed
+                    .truncatingRemainder(dividingBy: osc.sweepSeconds * 2) / osc.sweepSeconds
                 let ramp = cyclePosition < 1 ? cyclePosition : 2 - cyclePosition
-                let frequency = state.pointee.lowHz + (state.pointee.highHz - state.pointee.lowHz) * ramp
+                let frequency = osc.lowHz + (osc.highHz - osc.lowHz) * ramp
 
-                let sample = Float(sin(state.pointee.phase) * 0.9)
-                state.pointee.phase += 2 * .pi * frequency / state.pointee.sampleRate
-                if state.pointee.phase > 2 * .pi { state.pointee.phase -= 2 * .pi }
-                state.pointee.elapsed += 1 / state.pointee.sampleRate
+                let sample = Float(sin(osc.phase) * 0.9)
+                osc.phase += 2 * .pi * frequency / osc.sampleRate
+                if osc.phase > 2 * .pi { osc.phase -= 2 * .pi }
+                osc.elapsed += 1 / osc.sampleRate
 
                 for buffer in buffers {
                     let pointer = UnsafeMutableBufferPointer<Float>(buffer)
                     if frame < pointer.count { pointer[frame] = sample }
                 }
             }
+            state.pointee = osc  // Write back once after loop
             return noErr
         }
 
@@ -106,6 +108,16 @@ public final class AVSirenPlayer: SirenPlaying {
             oscillatorState = nil
         }
         isPlaying = false
+    }
+
+    // Isolated deinit runs on MainActor, allowing safe cleanup of audio resources
+    // if the player is released while still playing. Prevents memory leak of the
+    // manually-allocated oscillatorState pointer.
+    isolated deinit {
+        if let state = oscillatorState {
+            state.deinitialize(count: 1)
+            state.deallocate()
+        }
     }
 }
 
