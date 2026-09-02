@@ -37,3 +37,20 @@ import Foundation
     #expect(audio.forceCount == 2)
     #expect(audio.state.volume == 1.0)
 }
+
+@Test func restoreReturnsSuccessOnHappyPath() {
+    let original = AudioOutputState(deviceID: 1, volume: 0.5, muted: false)
+    let audio = FakeAudioOutputControl(state: original)
+    let result = audio.restore(original)
+    #expect(result == true)
+}
+
+@Test func restoreReturnsFalseWhenFailing() {
+    let original = AudioOutputState(deviceID: 1, volume: 0.5, muted: false)
+    let audio = FakeAudioOutputControl(state: original)
+    audio.shouldFailRestore = true
+    let result = audio.restore(original)
+    #expect(result == false)
+    // But state should still be updated (attempt all steps, don't abort early)
+    #expect(audio.state == original)
+}

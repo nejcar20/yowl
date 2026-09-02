@@ -12,10 +12,14 @@ public struct AudioOutputState: Equatable, Sendable {
     }
 }
 
+public enum AudioOutputError: Error {
+    case propertyWriteFailed(selector: String, status: OSStatus)
+}
+
 public protocol AudioOutputControlling: AnyObject {
     func currentState() -> AudioOutputState
     func forceMaxVolumeOnBuiltInSpeakers() throws
-    func restore(_ state: AudioOutputState)
+    @discardableResult func restore(_ state: AudioOutputState) -> Bool
 }
 
 /// Real CoreAudio implementation. Verified 2026-09-02: the built-in output
@@ -67,7 +71,7 @@ public final class CoreAudioOutputControl: AudioOutputControlling {
         return value
     }
 
-    private func setVolume(_ value: Float, on device: AudioDeviceID) {
+    private func setVolume(_ value: Float, on device: AudioDeviceID) -> Bool {
         var v = Float32(value)
         let size = UInt32(MemoryLayout<Float32>.size)
         var main = address(kAudioDevicePropertyVolumeScalar,
@@ -75,17 +79,22 @@ public final class CoreAudioOutputControl: AudioOutputControlling {
         if AudioObjectHasProperty(AudioObjectID(device), &main),
            AudioObjectSetPropertyData(AudioObjectID(device), &main, 0, nil,
                                       size, &v) == noErr {
-            return
+            return true
         }
         // Fall back to per-channel (stereo) volume.
+        // Success if at least one channel accepted the write.
+        var anyChannelSucceeded = false
         for channel in UInt32(1)...UInt32(2) {
             var addr = AudioObjectPropertyAddress(
                 mSelector: kAudioDevicePropertyVolumeScalar,
                 mScope: kAudioObjectPropertyScopeOutput,
                 mElement: channel)
             guard AudioObjectHasProperty(AudioObjectID(device), &addr) else { continue }
-            AudioObjectSetPropertyData(AudioObjectID(device), &addr, 0, nil, size, &v)
+            if AudioObjectSetPropertyData(AudioObjectID(device), &addr, 0, nil, size, &v) == noErr {
+                anyChannelSucceeded = true
+            }
         }
+        return anyChannelSucceeded
     }
 
     private func isMuted(_ device: AudioDeviceID) -> Bool {
@@ -99,20 +108,27 @@ public final class CoreAudioOutputControl: AudioOutputControlling {
         return value == 1
     }
 
-    private func setMuted(_ muted: Bool, on device: AudioDeviceID) {
+    private func setMuted(_ muted: Bool, on device: AudioDeviceID) -> Bool {
         var addr = address(kAudioDevicePropertyMute, kAudioObjectPropertyScopeOutput)
-        guard AudioObjectHasProperty(AudioObjectID(device), &addr) else { return }
+        guard AudioObjectHasProperty(AudioObjectID(device), &addr) else { return false }
         var value: UInt32 = muted ? 1 : 0
-        AudioObjectSetPropertyData(AudioObjectID(device), &addr, 0, nil,
-                                   UInt32(MemoryLayout<UInt32>.size), &value)
+        let status = AudioObjectSetPropertyData(AudioObjectID(device), &addr, 0, nil,
+                                                UInt32(MemoryLayout<UInt32>.size), &value)
+        return status == noErr
     }
 
     private func setDefaultOutputDevice(_ device: AudioDeviceID) {
         var addr = address(kAudioHardwarePropertyDefaultOutputDevice,
                            kAudioObjectPropertyScopeGlobal)
         var value = device
-        AudioObjectSetPropertyData(AudioObjectID(kAudioObjectSystemObject), &addr, 0, nil,
-                                   UInt32(MemoryLayout<AudioDeviceID>.size), &value)
+        // Check status for diagnostics, but do not abort. Failing to switch to built-in
+        // speakers means the siren plays through whatever device is currently default —
+        // degraded, but still loud. Failing to unmute or set volume means silence.
+        // A partial alarm (wrong device, full volume, unmuted) is strictly better than
+        // no alarm, so we do not throw here and let the critical unmute/volume steps
+        // proceed. Capture the status for diagnostics only.
+        _ = AudioObjectSetPropertyData(AudioObjectID(kAudioObjectSystemObject), &addr, 0, nil,
+                                       UInt32(MemoryLayout<AudioDeviceID>.size), &value)
     }
 
     /// Finds the internal speakers, so headphones cannot silence the alarm.
@@ -157,15 +173,27 @@ public final class CoreAudioOutputControl: AudioOutputControlling {
             setDefaultOutputDevice(builtIn)
         }
         let device = defaultOutputDevice
-        setMuted(false, on: device)
-        setVolume(1.0, on: device)
+        let muteSuccess = setMuted(false, on: device)
+        let volumeSuccess = setVolume(1.0, on: device)
+
+        // If either unmute or volume set failed, the siren would be inaudible.
+        if !muteSuccess {
+            throw AudioOutputError.propertyWriteFailed(selector: "kAudioDevicePropertyMute", status: -1)
+        }
+        if !volumeSuccess {
+            throw AudioOutputError.propertyWriteFailed(selector: "kAudioDevicePropertyVolumeScalar", status: -1)
+        }
     }
 
-    public func restore(_ state: AudioOutputState) {
+    @discardableResult
+    public func restore(_ state: AudioOutputState) -> Bool {
         let device = AudioDeviceID(state.deviceID)
         setDefaultOutputDevice(device)
-        setVolume(state.volume, on: device)
-        setMuted(state.muted, on: device)
+        let volumeSuccess = setVolume(state.volume, on: device)
+        let muteSuccess = setMuted(state.muted, on: device)
+
+        // Return success only if all steps succeeded.
+        return volumeSuccess && muteSuccess
     }
 }
 
@@ -173,6 +201,7 @@ public final class FakeAudioOutputControl: AudioOutputControlling {
     public private(set) var state: AudioOutputState
     public private(set) var forceCount = 0
     public private(set) var restoredStates: [AudioOutputState] = []
+    public var shouldFailRestore = false
 
     public init(state: AudioOutputState) { self.state = state }
 
@@ -183,8 +212,10 @@ public final class FakeAudioOutputControl: AudioOutputControlling {
         state = AudioOutputState(deviceID: state.deviceID, volume: 1.0, muted: false)
     }
 
-    public func restore(_ state: AudioOutputState) {
+    @discardableResult
+    public func restore(_ state: AudioOutputState) -> Bool {
         restoredStates.append(state)
         self.state = state
+        return !shouldFailRestore
     }
 }
