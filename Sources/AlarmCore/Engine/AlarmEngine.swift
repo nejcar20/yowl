@@ -62,7 +62,12 @@ public final class AlarmEngine {
         // the arm runs *before* any side effect, so a failed arm leaves
         // nothing half-configured -- no sleep assertion held, no state change,
         // no started triggers.
-        guard triggers.contains(where: \.canFireNow) else {
+        // `isEnabled` is a user preference and is re-read on every arm, unlike
+        // `isAvailable`, which is a fixed property of the build and filtered
+        // once at construction. A trigger counts only if the user wants it on
+        // AND it has something left to detect.
+        let armable = triggers.filter { $0.isEnabled && $0.canFireNow }
+        guard !armable.isEmpty else {
             throw AlarmEngineError.noArmableTrigger
         }
 
@@ -81,7 +86,7 @@ public final class AlarmEngine {
         // rather than a .disarmed one the reducer would silently no-op.
         state = reduce(state, .arm, now: clock.now)
 
-        for trigger in triggers {
+        for trigger in armable {
             let grace = trigger.graceSeconds
             try? trigger.start { [weak self] id in
                 self?.handleTrigger(id, graceSeconds: grace)
@@ -136,7 +141,9 @@ public final class AlarmEngine {
             // siren *after* the reset -- state .disarmed, savedState cleared,
             // UI showing "Arm", and a screaming machine with no way to stop it.
             guard case .firing = state else { return }
-            for response in responses { await response.fire(context: context) }
+            for response in responses where response.isEnabled {
+                await response.fire(context: context)
+            }
             onResponsesFired?()
         }
     }

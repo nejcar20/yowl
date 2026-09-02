@@ -8,7 +8,8 @@ import Foundation
 public final class FakeTrigger: Trigger {
     public let id: TriggerID
     public let isAvailable: Bool
-    public let graceSeconds: TimeInterval
+    public var isEnabled = true
+    public var graceSeconds: TimeInterval
     /// Defaults to true so existing tests keep arming; set false to model an
     /// edge-detected trigger whose edge has already passed.
     public let canFireNow: Bool
@@ -41,6 +42,7 @@ public final class FakeTrigger: Trigger {
 public final class FakeResponse: Response {
     public let identifier: String
     public let isAvailable: Bool
+    public var isEnabled = true
     public private(set) var fireCount = 0
     public private(set) var resetCount = 0
     public private(set) var lastContext: AlarmContext?

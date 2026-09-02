@@ -5,6 +5,7 @@ import Foundation
 public final class SirenResponse: Response {
     public let identifier = "siren"
     public let isAvailable = true
+    public var isEnabled = true
 
     private let player: SirenPlaying
     private let audio: AudioOutputControlling

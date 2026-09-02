@@ -5,7 +5,14 @@ import Foundation
 /// by conditional compilation at the call site.
 public protocol Capability: AnyObject {
     var identifier: String { get }
+    /// Can this run on this machine and in this build? Fixed at construction;
+    /// the user must never be able to switch an unavailable feature on, because
+    /// this is what lets a sandboxed build drop what it is forbidden to use.
     var isAvailable: Bool { get }
+    /// Does the user want this one active? Re-read on every arm and every fire,
+    /// because preferences change between alarms. A feature runs only when
+    /// `isAvailable && isEnabled`.
+    var isEnabled: Bool { get set }
 }
 
 /// Context handed to every response when the alarm fires.
@@ -21,8 +28,10 @@ public struct AlarmContext: Sendable, Equatable {
 /// A condition that can start the alarm.
 public protocol Trigger: Capability {
     var id: TriggerID { get }
-    /// Seconds the user gets to disarm before the siren starts. 0 = immediate.
-    var graceSeconds: TimeInterval { get }
+    /// Seconds the user gets to disarm before the siren starts. 0 = immediate,
+    /// which is the shipped default. Settable so the settings slider takes
+    /// effect without rebuilding the engine.
+    var graceSeconds: TimeInterval { get set }
     /// Whether this trigger could still fire if armed *right now*. Distinct
     /// from `isAvailable`, which is about the build/machine: an edge-detected
     /// trigger can be perfectly available and yet be unable to fire because the

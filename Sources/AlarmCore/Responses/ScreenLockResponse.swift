@@ -54,6 +54,7 @@ public final class ScreenLockResponse: Response {
     public init(locker: ScreenLocking) { self.locker = locker }
 
     public var isAvailable: Bool { locker.isAvailable }
+    public var isEnabled = true
 
     public func fire(context: AlarmContext) async {
         guard locker.isAvailable else { return }

@@ -1,5 +1,6 @@
 import SwiftUI
 import AlarmCore
+import ServiceManagement
 
 final class AppModel: ObservableObject {
     @Published private(set) var state: AlarmState = .disarmed
@@ -11,18 +12,33 @@ final class AppModel: ObservableObject {
     /// Whether the siren is actually producing sound, distinct from whether the
     /// alarm is firing: audio-device failures should be visible, not silent.
     @Published private(set) var isSirenSounding = false
+    /// Seconds left in the grace window. Nil unless counting down.
+    @Published private(set) var graceRemaining: Int?
+    /// Settings, mirrored for the UI. Writes go through the `set…` methods so
+    /// preference storage and the live objects can never disagree.
+    @Published private(set) var sirenEnabled = true
+    @Published private(set) var screenLockEnabled = true
+    @Published private(set) var graceSeconds: TimeInterval = GraceLimits.defaultValue
+    @Published private(set) var launchAtLogin = false
+    @Published private(set) var settingsMessage: String?
 
     private let engine: AlarmEngine
     private let passcodes: KeychainPasscodeStore
     private let siren: SirenResponse
+    private let screenLock: ScreenLockResponse
+    private let powerTrigger: PowerTrigger
+    private let preferences: PreferenceStoring
+    private var countdownTask: Task<Void, Never>?
 
-    init() {
+    init(preferences: PreferenceStoring = UserDefaultsPreferences()) {
+        self.preferences = preferences
         let passcodes = KeychainPasscodeStore()
         self.passcodes = passcodes
         self.needsPasscodeSetup = !passcodes.hasPasscode
 
         let trigger = PowerTrigger(monitor: IOKitPowerSourceMonitor(),
-                                   graceSeconds: 10)
+                                   graceSeconds: preferences.graceSeconds)
+        self.powerTrigger = trigger
         let siren = SirenResponse(player: AVSirenPlayer(),
                                   audio: CoreAudioOutputControl())
         self.siren = siren
@@ -31,6 +47,7 @@ final class AppModel: ObservableObject {
         // AppModel is itself a single @StateObject for the app's lifetime, so
         // this initializer is that one place.
         let lock = ScreenLockResponse(locker: LoginFrameworkScreenLocker())
+        self.screenLock = lock
 
         engine = AlarmEngine(triggers: [trigger],
                              responses: [siren, lock],
@@ -39,6 +56,7 @@ final class AppModel: ObservableObject {
                              sleepAssertion: IOKitSleepAssertion())
         engine.onStateChange = { [weak self] newState in
             self?.state = newState
+            self?.updateCountdown(for: newState)
             // Clear here (not just on the next fire) so a stale "sounding"
             // status cannot survive a disarm.
             guard case .firing = newState else {
@@ -51,6 +69,124 @@ final class AppModel: ObservableObject {
         engine.onResponsesFired = { [weak self] in
             guard let self, case .firing = self.state else { return }
             self.isSirenSounding = self.siren.isSounding
+        }
+
+        // Apply stored preferences to the live objects. Availability is decided
+        // by the build and must never be overridden here: an unavailable
+        // feature stays off whatever the stored preference says.
+        siren.isEnabled = siren.isAvailable && preferences.isEnabled(siren.identifier)
+        lock.isEnabled = lock.isAvailable && preferences.isEnabled(lock.identifier)
+        trigger.isEnabled = trigger.isAvailable && preferences.isEnabled(trigger.identifier)
+        sirenEnabled = siren.isEnabled
+        screenLockEnabled = lock.isEnabled
+        graceSeconds = preferences.graceSeconds
+        launchAtLogin = Self.loginItemIsRegistered()
+    }
+
+    // MARK: - Grace countdown
+
+    /// A silent grace window reads as a broken alarm without a countdown:
+    /// "Triggered" with nothing happening looks identical to a siren that
+    /// failed. Showing the seconds makes the silence legible.
+    private func updateCountdown(for newState: AlarmState) {
+        countdownTask?.cancel()
+        countdownTask = nil
+
+        guard case let .grace(until, _) = newState else {
+            graceRemaining = nil
+            return
+        }
+        graceRemaining = Self.secondsRemaining(until: until)
+        // A Task rather than a Timer: it inherits this object's main-actor
+        // isolation, so the countdown needs no escape hatch to touch state.
+        countdownTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .milliseconds(250))
+                guard let self, case let .grace(deadline, _) = self.state else { return }
+                self.graceRemaining = Self.secondsRemaining(until: deadline)
+            }
+        }
+    }
+
+    private static func secondsRemaining(until deadline: Date) -> Int {
+        max(0, Int(deadline.timeIntervalSinceNow.rounded(.up)))
+    }
+
+    // MARK: - Settings
+
+    /// Settings are frozen while armed. This is a security property, not a UX
+    /// nicety: being able to switch off the siren while it is screaming, or
+    /// stretch the grace window mid-countdown, would be a disarm that never
+    /// meets the passcode.
+    var settingsLocked: Bool { isArmed }
+
+    /// A response the user can switch off. Only the siren and the screen lock
+    /// today; trigger toggles stay hidden until a second trigger exists, since
+    /// unchecking the only one just makes arming refuse.
+    func setSirenEnabled(_ enabled: Bool) {
+        guard !settingsLocked else { return }
+        siren.isEnabled = enabled
+        preferences.setEnabled(enabled, for: siren.identifier)
+        sirenEnabled = enabled
+        warnIfNoResponsesLeft()
+    }
+
+    func setScreenLockEnabled(_ enabled: Bool) {
+        guard !settingsLocked else { return }
+        screenLock.isEnabled = enabled
+        preferences.setEnabled(enabled, for: screenLock.identifier)
+        screenLockEnabled = enabled
+        warnIfNoResponsesLeft()
+    }
+
+    private func warnIfNoResponsesLeft() {
+        settingsMessage = (!sirenEnabled && !screenLockEnabled)
+            ? "Nothing will happen when the alarm fires. It will still detect the theft — it just won't react."
+            : nil
+    }
+
+    func setGraceSeconds(_ seconds: TimeInterval) {
+        guard !settingsLocked else { return }
+        preferences.graceSeconds = seconds
+        // Read back: the store clamps, so this is the value actually applied.
+        let applied = preferences.graceSeconds
+        powerTrigger.graceSeconds = applied
+        graceSeconds = applied
+    }
+
+    /// `SMAppService` only works from a real .app bundle and can throw — an
+    /// unbundled debug run, or a copy macOS does not trust. Failing loudly here
+    /// is right: silently not registering would mean the user believes they are
+    /// protected at every login when they are not.
+    func setLaunchAtLogin(_ enabled: Bool) {
+        guard !settingsLocked else { return }
+        do {
+            if enabled { try SMAppService.mainApp.register() }
+            else { try SMAppService.mainApp.unregister() }
+            launchAtLogin = Self.loginItemIsRegistered()
+            settingsMessage = nil
+        } catch {
+            launchAtLogin = Self.loginItemIsRegistered()
+            settingsMessage = "Could not change the login item. Run the app from /Applications and try again."
+        }
+    }
+
+    private static func loginItemIsRegistered() -> Bool {
+        SMAppService.mainApp.status == .enabled
+    }
+
+    func changePasscode(current: String, new: String) {
+        guard !settingsLocked else { return }
+        do {
+            if try passcodes.changePasscode(current: current, new: new) {
+                settingsMessage = "Passcode changed."
+            } else {
+                settingsMessage = "That is not the current passcode."
+            }
+        } catch PasscodeError.empty {
+            settingsMessage = "Enter a new passcode."
+        } catch {
+            settingsMessage = "Could not change the passcode."
         }
     }
 

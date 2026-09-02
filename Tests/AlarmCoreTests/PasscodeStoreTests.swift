@@ -59,3 +59,38 @@ import Foundation
     #expect(store.verify("old") == false)
     #expect(store.verify("new") == true)
 }
+
+// Changing the passcode must prove knowledge of the current one. Without this
+// it is a one-click disarm bypass: set a new passcode, then use it to stop the
+// siren without ever knowing the old one.
+@Test func changingThePasscodeRequiresTheCurrentOne() throws {
+    let store = InMemoryPasscodeStore()
+    try store.setPasscode("old")
+    #expect(try store.changePasscode(current: "wrong", new: "new") == false)
+    #expect(store.verify("old") == true)
+    #expect(store.verify("new") == false)
+}
+
+@Test func changingThePasscodeWithTheCorrectCurrentOneSucceeds() throws {
+    let store = InMemoryPasscodeStore()
+    try store.setPasscode("old")
+    #expect(try store.changePasscode(current: "old", new: "new") == true)
+    #expect(store.verify("new") == true)
+    #expect(store.verify("old") == false)
+}
+
+@Test func changingToAnEmptyPasscodeIsRejected() throws {
+    let store = InMemoryPasscodeStore()
+    try store.setPasscode("old")
+    #expect(throws: PasscodeError.self) { _ = try store.changePasscode(current: "old", new: "") }
+    #expect(store.verify("old") == true)
+}
+
+// A failed change must not destroy the existing passcode.
+@Test func aFailedChangeLeavesTheOriginalPasscodeIntact() throws {
+    let store = InMemoryPasscodeStore()
+    try store.setPasscode("old")
+    _ = try? store.changePasscode(current: "wrong", new: "new")
+    #expect(store.hasPasscode == true)
+    #expect(store.verify("old") == true)
+}
