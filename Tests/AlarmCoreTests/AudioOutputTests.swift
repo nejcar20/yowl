@@ -54,3 +54,27 @@ import Foundation
     // But state should still be updated (attempt all steps, don't abort early)
     #expect(audio.state == original)
 }
+
+@Test func forceThrowsWhenShouldFailForceIsSet() {
+    let audio = FakeAudioOutputControl(
+        state: AudioOutputState(deviceID: 1, volume: 0.2, muted: true))
+    audio.shouldFailForce = true
+    #expect(throws: AudioOutputError.self) {
+        try audio.forceMaxVolumeOnBuiltInSpeakers()
+    }
+}
+
+// Per-channel volume capture and restore: verify the contract with the Fake.
+// The real CoreAudioOutputControl path is untestable; this exercises only
+// the protocol contract and state-management logic.
+@Test func perChannelVolumesRoundTrip() {
+    let channelVols: [UInt32: Float] = [1: 0.3, 2: 0.7]
+    let original = AudioOutputState(deviceID: 1, volume: 0.3, muted: false,
+                                    channelVolumes: channelVols)
+    let audio = FakeAudioOutputControl(state: original)
+    let captured = audio.currentState()
+    try? audio.forceMaxVolumeOnBuiltInSpeakers()
+    audio.restore(captured)
+    #expect(audio.state == original)
+    #expect(audio.state.channelVolumes == channelVols)
+}

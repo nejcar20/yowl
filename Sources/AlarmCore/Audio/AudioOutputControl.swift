@@ -3,12 +3,16 @@ import CoreAudio
 
 public struct AudioOutputState: Equatable, Sendable {
     public let deviceID: UInt32
-    public let volume: Float
+    public let volume: Float                       // main element, or channel 1
     public let muted: Bool
-    public init(deviceID: UInt32, volume: Float, muted: Bool) {
+    public let channelVolumes: [UInt32: Float]     // empty when main element was used
+
+    public init(deviceID: UInt32, volume: Float, muted: Bool,
+                channelVolumes: [UInt32: Float] = [:]) {
         self.deviceID = deviceID
         self.volume = volume
         self.muted = muted
+        self.channelVolumes = channelVolumes
     }
 }
 
@@ -34,14 +38,14 @@ public final class CoreAudioOutputControl: AudioOutputControlling {
                                    mElement: kAudioObjectPropertyElementMain)
     }
 
-    private var defaultOutputDevice: AudioDeviceID {
+    private func defaultOutputDevice() -> AudioDeviceID? {
         var addr = address(kAudioHardwarePropertyDefaultOutputDevice,
                            kAudioObjectPropertyScopeGlobal)
         var device = AudioDeviceID(0)
         var size = UInt32(MemoryLayout<AudioDeviceID>.size)
-        AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject),
-                                   &addr, 0, nil, &size, &device)
-        return device
+        let status = AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject),
+                                                &addr, 0, nil, &size, &device)
+        return status == noErr ? device : nil
     }
 
     private func volume(of device: AudioDeviceID) -> Float {
@@ -71,30 +75,57 @@ public final class CoreAudioOutputControl: AudioOutputControlling {
         return value
     }
 
-    private func setVolume(_ value: Float, on device: AudioDeviceID) -> Bool {
+    /// Capture all per-channel volumes for devices without main-element volume.
+    /// Returns a dictionary mapping channel element numbers to their volumes.
+    /// Empty if main element was used or no channels have volume.
+    private func allChannelVolumes(of device: AudioDeviceID) -> [UInt32: Float] {
+        var channels: [UInt32: Float] = [:]
+        for channel in UInt32(1)...UInt32(2) {
+            var addr = AudioObjectPropertyAddress(
+                mSelector: kAudioDevicePropertyVolumeScalar,
+                mScope: kAudioObjectPropertyScopeOutput,
+                mElement: channel)
+            var value: Float32 = 0
+            var size = UInt32(MemoryLayout<Float32>.size)
+            guard AudioObjectHasProperty(AudioObjectID(device), &addr),
+                  AudioObjectGetPropertyData(AudioObjectID(device), &addr, 0, nil,
+                                             &size, &value) == noErr
+            else { continue }
+            channels[channel] = value
+        }
+        return channels
+    }
+
+    private func setVolume(_ value: Float, on device: AudioDeviceID) -> (success: Bool, status: OSStatus) {
         var v = Float32(value)
         let size = UInt32(MemoryLayout<Float32>.size)
         var main = address(kAudioDevicePropertyVolumeScalar,
                            kAudioObjectPropertyScopeOutput)
-        if AudioObjectHasProperty(AudioObjectID(device), &main),
-           AudioObjectSetPropertyData(AudioObjectID(device), &main, 0, nil,
-                                      size, &v) == noErr {
-            return true
+        if AudioObjectHasProperty(AudioObjectID(device), &main) {
+            let status = AudioObjectSetPropertyData(AudioObjectID(device), &main, 0, nil,
+                                                    size, &v)
+            if status == noErr {
+                return (true, noErr)
+            }
         }
         // Fall back to per-channel (stereo) volume.
         // Success if at least one channel accepted the write.
         var anyChannelSucceeded = false
+        var lastStatus: OSStatus = OSStatus(paramErr)
         for channel in UInt32(1)...UInt32(2) {
             var addr = AudioObjectPropertyAddress(
                 mSelector: kAudioDevicePropertyVolumeScalar,
                 mScope: kAudioObjectPropertyScopeOutput,
                 mElement: channel)
             guard AudioObjectHasProperty(AudioObjectID(device), &addr) else { continue }
-            if AudioObjectSetPropertyData(AudioObjectID(device), &addr, 0, nil, size, &v) == noErr {
+            let status = AudioObjectSetPropertyData(AudioObjectID(device), &addr, 0, nil, size, &v)
+            if status == noErr {
                 anyChannelSucceeded = true
+            } else {
+                lastStatus = status
             }
         }
-        return anyChannelSucceeded
+        return (anyChannelSucceeded, anyChannelSucceeded ? noErr : lastStatus)
     }
 
     private func isMuted(_ device: AudioDeviceID) -> Bool {
@@ -108,27 +139,25 @@ public final class CoreAudioOutputControl: AudioOutputControlling {
         return value == 1
     }
 
-    private func setMuted(_ muted: Bool, on device: AudioDeviceID) -> Bool {
+    private func setMuted(_ muted: Bool, on device: AudioDeviceID) -> (success: Bool, status: OSStatus) {
         var addr = address(kAudioDevicePropertyMute, kAudioObjectPropertyScopeOutput)
-        guard AudioObjectHasProperty(AudioObjectID(device), &addr) else { return false }
+        guard AudioObjectHasProperty(AudioObjectID(device), &addr) else { return (false, OSStatus(paramErr)) }
         var value: UInt32 = muted ? 1 : 0
         let status = AudioObjectSetPropertyData(AudioObjectID(device), &addr, 0, nil,
                                                 UInt32(MemoryLayout<UInt32>.size), &value)
-        return status == noErr
+        return (status == noErr, status)
     }
 
-    private func setDefaultOutputDevice(_ device: AudioDeviceID) {
+    private func setDefaultOutputDevice(_ device: AudioDeviceID) -> OSStatus {
         var addr = address(kAudioHardwarePropertyDefaultOutputDevice,
                            kAudioObjectPropertyScopeGlobal)
         var value = device
-        // Check status for diagnostics, but do not abort. Failing to switch to built-in
-        // speakers means the siren plays through whatever device is currently default —
-        // degraded, but still loud. Failing to unmute or set volume means silence.
-        // A partial alarm (wrong device, full volume, unmuted) is strictly better than
-        // no alarm, so we do not throw here and let the critical unmute/volume steps
-        // proceed. Capture the status for diagnostics only.
-        _ = AudioObjectSetPropertyData(AudioObjectID(kAudioObjectSystemObject), &addr, 0, nil,
-                                       UInt32(MemoryLayout<AudioDeviceID>.size), &value)
+        // Do not throw on failure. Failing to switch to built-in speakers means the siren
+        // plays through whatever device is currently default — degraded, but still loud.
+        // Failing to unmute or set volume means silence. A partial alarm is better than
+        // no alarm, so we let the critical unmute/volume steps proceed regardless.
+        return AudioObjectSetPropertyData(AudioObjectID(kAudioObjectSystemObject), &addr, 0, nil,
+                                          UInt32(MemoryLayout<AudioDeviceID>.size), &value)
     }
 
     /// Finds the internal speakers, so headphones cannot silence the alarm.
@@ -162,35 +191,70 @@ public final class CoreAudioOutputControl: AudioOutputControlling {
     }
 
     public func currentState() -> AudioOutputState {
-        let device = defaultOutputDevice
+        guard let device = defaultOutputDevice() else {
+            return AudioOutputState(deviceID: 0, volume: 0, muted: false)
+        }
+        let vol = volume(of: device)
+
+        // If main element has volume, use it. Otherwise capture all per-channel volumes.
+        var addr = address(kAudioDevicePropertyVolumeScalar,
+                           kAudioObjectPropertyScopeOutput)
+        let hasMainVolume = AudioObjectHasProperty(AudioObjectID(device), &addr)
+        let channelVols = hasMainVolume ? [:] : allChannelVolumes(of: device)
+
         return AudioOutputState(deviceID: UInt32(device),
-                                volume: volume(of: device),
-                                muted: isMuted(device))
+                                volume: vol,
+                                muted: isMuted(device),
+                                channelVolumes: channelVols)
     }
 
     public func forceMaxVolumeOnBuiltInSpeakers() throws {
-        if let builtIn = builtInOutputDevice(), builtIn != defaultOutputDevice {
-            setDefaultOutputDevice(builtIn)
+        if let builtIn = builtInOutputDevice(), let current = defaultOutputDevice(), builtIn != current {
+            _ = setDefaultOutputDevice(builtIn)
         }
-        let device = defaultOutputDevice
-        let muteSuccess = setMuted(false, on: device)
-        let volumeSuccess = setVolume(1.0, on: device)
+        guard let device = defaultOutputDevice() else {
+            throw AudioOutputError.propertyWriteFailed(selector: "kAudioHardwarePropertyDefaultOutputDevice", status: -1)
+        }
+
+        let (muteSuccess, muteStatus) = setMuted(false, on: device)
+        let (volumeSuccess, volumeStatus) = setVolume(1.0, on: device)
 
         // If either unmute or volume set failed, the siren would be inaudible.
         if !muteSuccess {
-            throw AudioOutputError.propertyWriteFailed(selector: "kAudioDevicePropertyMute", status: -1)
+            throw AudioOutputError.propertyWriteFailed(selector: "kAudioDevicePropertyMute", status: muteStatus)
         }
         if !volumeSuccess {
-            throw AudioOutputError.propertyWriteFailed(selector: "kAudioDevicePropertyVolumeScalar", status: -1)
+            throw AudioOutputError.propertyWriteFailed(selector: "kAudioDevicePropertyVolumeScalar", status: volumeStatus)
         }
     }
 
     @discardableResult
     public func restore(_ state: AudioOutputState) -> Bool {
         let device = AudioDeviceID(state.deviceID)
-        setDefaultOutputDevice(device)
-        let volumeSuccess = setVolume(state.volume, on: device)
-        let muteSuccess = setMuted(state.muted, on: device)
+        _ = setDefaultOutputDevice(device)
+
+        // If per-channel volumes were captured, restore each channel individually.
+        var volumeSuccess = true
+        if !state.channelVolumes.isEmpty {
+            let size = UInt32(MemoryLayout<Float32>.size)
+            for (channel, volume) in state.channelVolumes {
+                var v = Float32(volume)
+                var addr = AudioObjectPropertyAddress(
+                    mSelector: kAudioDevicePropertyVolumeScalar,
+                    mScope: kAudioObjectPropertyScopeOutput,
+                    mElement: channel)
+                let status = AudioObjectSetPropertyData(AudioObjectID(device), &addr, 0, nil, size, &v)
+                if status != noErr {
+                    volumeSuccess = false
+                }
+            }
+        } else {
+            // Otherwise restore main-element volume.
+            let (success, _) = setVolume(state.volume, on: device)
+            volumeSuccess = success
+        }
+
+        let (muteSuccess, _) = setMuted(state.muted, on: device)
 
         // Return success only if all steps succeeded.
         return volumeSuccess && muteSuccess
@@ -202,12 +266,16 @@ public final class FakeAudioOutputControl: AudioOutputControlling {
     public private(set) var forceCount = 0
     public private(set) var restoredStates: [AudioOutputState] = []
     public var shouldFailRestore = false
+    public var shouldFailForce = false
 
     public init(state: AudioOutputState) { self.state = state }
 
     public func currentState() -> AudioOutputState { state }
 
     public func forceMaxVolumeOnBuiltInSpeakers() throws {
+        if shouldFailForce {
+            throw AudioOutputError.propertyWriteFailed(selector: "kAudioDevicePropertyVolumeScalar", status: OSStatus(paramErr))
+        }
         forceCount += 1
         state = AudioOutputState(deviceID: state.deviceID, volume: 1.0, muted: false)
     }
