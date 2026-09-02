@@ -216,6 +216,13 @@ public final class CoreAudioOutputControl: AudioOutputControlling {
 
     public func forceMaxVolumeOnBuiltInSpeakers() throws {
         let (currentDevice, _) = defaultOutputDevice()
+        // `currentDevice` is optional and `builtIn` is not, so `!=` promotes
+        // `builtIn` to `AudioDeviceID?`. That means when the current device
+        // cannot be determined (currentDevice == nil) the comparison is true
+        // and we switch to the built-in speakers anyway. Deliberate, and
+        // aligned with failing toward noise: not knowing where audio is
+        // currently going is a reason to force it somewhere we know is loud,
+        // not a reason to leave it be.
         if let builtIn = builtInOutputDevice(), builtIn != currentDevice {
             _ = setDefaultOutputDevice(builtIn)
         }
@@ -285,7 +292,17 @@ public final class FakeAudioOutputControl: AudioOutputControlling {
             throw AudioOutputError.propertyWriteFailed(selector: "kAudioDevicePropertyVolumeScalar", status: OSStatus(paramErr))
         }
         forceCount += 1
-        state = AudioOutputState(deviceID: state.deviceID, volume: 1.0, muted: false)
+        // Model `CoreAudioOutputControl.setVolume(1.0, on:)`: it writes 1.0 to
+        // whichever elements carry volume — the main element, or, on devices
+        // without one, every stereo channel. Dropping `channelVolumes` here
+        // would leave them at their pre-force values, so
+        // `perChannelVolumesRoundTrip` would "pass" against a fake that never
+        // forced the channels the real implementation does force.
+        state = AudioOutputState(deviceID: state.deviceID,
+                                 volume: 1.0,
+                                 muted: false,
+                                 channelVolumes: state.channelVolumes
+                                     .mapValues { _ in Float(1.0) })
     }
 
     @discardableResult

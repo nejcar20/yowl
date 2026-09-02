@@ -27,6 +27,17 @@ public final class SystemClock: AlarmClock {
     @discardableResult
     public func schedule(after seconds: TimeInterval,
                          _ body: @escaping () -> Void) -> ScheduledWork {
+        // ISOLATION INVARIANT (not checked by the compiler): `body` is a
+        // main-actor-isolated closure — AlarmEngine's grace-expiry callback,
+        // which reads and writes the engine's main-actor state — and it
+        // converts to a `DispatchWorkItem` with no diagnostic, erasing that
+        // isolation.
+        //
+        // It is safe *only* because the item is dispatched to `.main`. Change
+        // this queue to a global or custom one and the grace timer starts
+        // mutating AlarmEngine.state off the main actor, silently. If a
+        // background queue is ever needed here, the body must be hopped back
+        // (e.g. `Task { @MainActor in ... }`) rather than run in place.
         let item = DispatchWorkItem(block: body)
         DispatchQueue.main.asyncAfter(deadline: .now() + seconds, execute: item)
         return Work(item)

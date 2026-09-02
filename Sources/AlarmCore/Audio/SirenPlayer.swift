@@ -49,7 +49,45 @@ public final class AVSirenPlayer: SirenPlaying {
             sweepSeconds: 0.5
         ))
 
-        let node = AVAudioSourceNode { _, _, frameCount, audioBufferList in
+        let node = AVAudioSourceNode(renderBlock: Self.makeRenderBlock(state: state))
+
+        sourceNode = node
+        oscillatorState = state
+        engine.attach(node)
+        engine.connect(node, to: engine.mainMixerNode, format: nil)
+        engine.mainMixerNode.outputVolume = 1.0
+        do {
+            try engine.start()
+            isPlaying = true
+            return true
+        } catch {
+            // Failure: stop engine, detach node, clean up state.
+            engine.stop()
+            engine.detach(node)
+            sourceNode = nil
+            state.deinitialize(count: 1)
+            state.deallocate()
+            oscillatorState = nil
+            return false
+        }
+    }
+
+    /// ISOLATION INVARIANT (not checked by the compiler): this block runs on
+    /// the real-time audio thread, never on the main actor, yet a main-actor
+    /// closure converts to `AVAudioSourceNodeRenderBlock` with no diagnostic.
+    /// It is safe only because it touches nothing but its own `state` pointer,
+    /// which is owned exclusively by the render block between start() and
+    /// stop(). Adding any `self.` reference here — reading `isPlaying`, calling
+    /// a method, capturing the engine — would be a data race on main-actor
+    /// state from the audio thread, with no warning to tell you.
+    ///
+    /// Declaring it `nonisolated static` is the guard: there is no `self` in
+    /// scope, so such a reference becomes a compile error rather than a silent
+    /// race. Do not turn this back into an inline closure.
+    private nonisolated static func makeRenderBlock(
+        state: UnsafeMutablePointer<OscillatorState>
+    ) -> AVAudioSourceNodeRenderBlock {
+        { _, _, frameCount, audioBufferList in
             var osc = state.pointee  // Load state once before loop
             let buffers = UnsafeMutableAudioBufferListPointer(audioBufferList)
             for frame in 0..<Int(frameCount) {
@@ -71,26 +109,6 @@ public final class AVSirenPlayer: SirenPlaying {
             }
             state.pointee = osc  // Write back once after loop
             return noErr
-        }
-
-        sourceNode = node
-        oscillatorState = state
-        engine.attach(node)
-        engine.connect(node, to: engine.mainMixerNode, format: nil)
-        engine.mainMixerNode.outputVolume = 1.0
-        do {
-            try engine.start()
-            isPlaying = true
-            return true
-        } catch {
-            // Failure: stop engine, detach node, clean up state.
-            engine.stop()
-            engine.detach(node)
-            sourceNode = nil
-            state.deinitialize(count: 1)
-            state.deallocate()
-            oscillatorState = nil
-            return false
         }
     }
 

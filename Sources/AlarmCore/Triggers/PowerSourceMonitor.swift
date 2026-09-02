@@ -31,6 +31,17 @@ public final class IOKitPowerSourceMonitor: PowerSourceMonitoring {
         stopMonitoring()
         self.onChange = onChange
         let context = Unmanaged.passUnretained(self).toOpaque()
+        // ISOLATION INVARIANT (not checked by the compiler): this closure
+        // converts to a `@convention(c)` function pointer with no diagnostic,
+        // which erases its main-actor isolation — yet its body reads
+        // `monitor.onChange` and `monitor.isOnACPower`, both main-actor state,
+        // and `isOnACPower` mutates `lastKnownACPower`.
+        //
+        // It is safe *only* because of the CFRunLoopAddSource(CFRunLoopGetMain(),
+        // ...) below: the run-loop source is attached to the main run loop, so
+        // IOKit only ever invokes this on the main thread. Change that line to
+        // any other run loop (a dedicated monitoring thread, CFRunLoopGetCurrent()
+        // called off-main) and every access here becomes a data race, silently.
         let callback: IOPowerSourceCallbackType = { ctx in
             guard let ctx else { return }
             let monitor = Unmanaged<IOKitPowerSourceMonitor>
@@ -40,6 +51,8 @@ public final class IOKitPowerSourceMonitor: PowerSourceMonitoring {
         guard let src = IOPSNotificationCreateRunLoopSource(callback, context)?
             .takeRetainedValue() else { return }
         source = src
+        // Load-bearing for the invariant documented above the callback: this is
+        // what pins delivery to the main thread.
         CFRunLoopAddSource(CFRunLoopGetMain(), src, .defaultMode)
     }
 

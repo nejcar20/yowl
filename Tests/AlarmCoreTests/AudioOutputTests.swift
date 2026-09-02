@@ -67,6 +67,10 @@ import Foundation
 // Per-channel volume capture and restore: verify the contract with the Fake.
 // The real CoreAudioOutputControl path is untestable; this exercises only
 // the protocol contract and state-management logic.
+//
+// The mid-test assertion is what gives the round trip meaning: the fake must
+// actually raise the channels to 1.0 the way `setVolume(1.0, on:)` does, or
+// "restoring" them would be restoring values that were never disturbed.
 @Test func perChannelVolumesRoundTrip() {
     let channelVols: [UInt32: Float] = [1: 0.3, 2: 0.7]
     let original = AudioOutputState(deviceID: 1, volume: 0.3, muted: false,
@@ -74,7 +78,19 @@ import Foundation
     let audio = FakeAudioOutputControl(state: original)
     let captured = audio.currentState()
     try? audio.forceMaxVolumeOnBuiltInSpeakers()
+    #expect(audio.state.channelVolumes == [1: 1.0, 2: 1.0])
     audio.restore(captured)
     #expect(audio.state == original)
     #expect(audio.state.channelVolumes == channelVols)
+}
+
+// Devices with a main-element volume report no channel volumes, and forcing
+// must not invent any: `restore` keys off `channelVolumes.isEmpty` to choose
+// its path, so a fabricated channel map would send it down the wrong one.
+@Test func forcingDoesNotInventChannelVolumesForMainElementDevices() {
+    let audio = FakeAudioOutputControl(
+        state: AudioOutputState(deviceID: 1, volume: 0.2, muted: true))
+    try? audio.forceMaxVolumeOnBuiltInSpeakers()
+    #expect(audio.state.channelVolumes.isEmpty)
+    #expect(audio.state.volume == 1.0)
 }
