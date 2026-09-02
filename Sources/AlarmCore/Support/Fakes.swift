@@ -6,14 +6,19 @@ public final class FakeTrigger: Trigger {
     public let id: TriggerID
     public let isAvailable: Bool
     public let graceSeconds: TimeInterval
+    /// Defaults to true so existing tests keep arming; set false to model an
+    /// edge-detected trigger whose edge has already passed.
+    public let canFireNow: Bool
     public var identifier: String { id.rawValue }
     public private(set) var isStarted = false
     private var onFire: ((TriggerID) -> Void)?
 
-    public init(id: TriggerID, isAvailable: Bool = true, graceSeconds: TimeInterval = 0) {
+    public init(id: TriggerID, isAvailable: Bool = true, graceSeconds: TimeInterval = 0,
+                canFireNow: Bool = true) {
         self.id = id
         self.isAvailable = isAvailable
         self.graceSeconds = graceSeconds
+        self.canFireNow = canFireNow
     }
 
     public func start(onFire: @escaping (TriggerID) -> Void) throws {

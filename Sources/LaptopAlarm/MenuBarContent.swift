@@ -27,8 +27,20 @@ struct MenuBarContent: View {
                 Text(error).foregroundStyle(.red).font(.caption)
             }
 
+            if let warning = model.warningMessage {
+                Text(warning).foregroundStyle(.orange).font(.caption)
+            }
+
             Divider()
+            // Quit is a kill switch: during the 10-second grace the screen is
+            // not locked yet, so a thief who recognises the app could otherwise
+            // click Quit and end the alarm without ever meeting the passcode.
+            // The passcode gates disarm; it must gate quit too.
             Button("Quit") { NSApplication.shared.terminate(nil) }
+                .disabled(model.isArmed)
+            if model.isArmed {
+                Text("Disarm to quit.").font(.caption).foregroundStyle(.secondary)
+            }
         }
         .padding(12)
         .frame(width: 240)

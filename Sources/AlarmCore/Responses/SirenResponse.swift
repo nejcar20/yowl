@@ -22,11 +22,35 @@ public final class SirenResponse: Response {
 
     public func fire(context: AlarmContext) async {
         if savedState == nil { savedState = audio.currentState() }
-        try? audio.forceMaxVolumeOnBuiltInSpeakers()
-        isSounding = player.start()
+
+        // `forceMaxVolumeOnBuiltInSpeakers()` throws exactly when the unmute or
+        // the volume write failed -- i.e. when the siren will be inaudible. We
+        // still start the player (fail toward noise: a route we could not force
+        // may still be audible), but we must not *claim* the siren is sounding
+        // on a Mac we could not unmute. Swallowing this with `try?` is what made
+        // the menu bar say "Siren sounding" on a muted machine.
+        var forced = true
+        do {
+            try audio.forceMaxVolumeOnBuiltInSpeakers()
+        } catch {
+            forced = false
+        }
+        let started = player.start()
+        isSounding = forced && started
     }
 
     public func reset() async {
+        restoreAudioAndSilence()
+    }
+
+    /// The single teardown path for the siren: stop the player and put the
+    /// user's audio settings back. Synchronous because
+    /// `applicationWillTerminate` cannot await, and it must run there too --
+    /// `NSApplication.terminate` does not run deinits, so without this a quit
+    /// mid-alarm would leave the Mac permanently unmuted at volume 1.0 with
+    /// output forced to the built-in speakers. `reset()` delegates here so
+    /// there is exactly one restore implementation.
+    public func restoreAudioAndSilence() {
         player.stop()
         isSounding = false
         if let savedState {

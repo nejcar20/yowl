@@ -5,6 +5,8 @@ final class AppModel: ObservableObject {
     @Published private(set) var state: AlarmState = .disarmed
     @Published var passcodeEntry = ""
     @Published var errorMessage: String?
+    /// Non-blocking problems: armed, but with a degraded guarantee.
+    @Published private(set) var warningMessage: String?
     @Published var needsPasscodeSetup: Bool
     /// Whether the siren is actually producing sound, distinct from whether the
     /// alarm is firing: audio-device failures should be visible, not silent.
@@ -75,11 +77,21 @@ final class AppModel: ObservableObject {
         do {
             try engine.arm()
             errorMessage = nil
+            // Armed, but the Mac may sleep and stop noticing the charger. Not
+            // an error: the alarm is still wired up.
+            warningMessage = engine.sleepAssertionFailed
+                ? "Armed, but macOS refused the keep-awake request. Keep the lid open — a sleeping Mac cannot hear the charger being pulled."
+                : nil
         } catch AlarmEngineError.noPasscodeSet {
             needsPasscodeSetup = true
             errorMessage = "Set a passcode before arming."
+            warningMessage = nil
+        } catch AlarmEngineError.noArmableTrigger {
+            errorMessage = "Plug in the charger to arm. The alarm fires when the charger is pulled."
+            warningMessage = nil
         } catch {
             errorMessage = "Could not arm."
+            warningMessage = nil
         }
     }
 
@@ -87,9 +99,21 @@ final class AppModel: ObservableObject {
         if engine.disarm(passcode: passcodeEntry) {
             passcodeEntry = ""
             errorMessage = nil
+            warningMessage = nil
         } else {
             passcodeEntry = ""
             errorMessage = "Wrong passcode."
         }
+    }
+
+    /// Called from `applicationWillTerminate`. `NSApplication.terminate` does
+    /// not run `@StateObject` deinits, so without this a quit (or a crash-path
+    /// terminate) while the siren is firing would leave the Mac permanently
+    /// unmuted at volume 1.0 with output forced to the built-in speakers.
+    /// Reuses `SirenResponse`'s single restore path rather than duplicating it.
+    /// This also silences the siren, which is correct: the process is dying
+    /// either way, and vandalised audio settings would outlive it.
+    func restoreAudioBeforeTermination() {
+        siren.restoreAudioAndSilence()
     }
 }

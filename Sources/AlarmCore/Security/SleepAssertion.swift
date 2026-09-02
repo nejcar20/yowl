@@ -1,9 +1,18 @@
 import Foundation
 import IOKit.pwr_mgt
 
+public enum SleepAssertionError: Error, Equatable {
+    /// No assertion could be taken. Carries the last IOKit `IOReturn`.
+    case assertionFailed(status: Int32)
+}
+
 public protocol SleepPreventing: AnyObject {
     var isHeld: Bool { get }
-    func acquire(reason: String)
+    /// Throws when nothing could be asserted. Mirrors how
+    /// `AudioOutputControlling.forceMaxVolumeOnBuiltInSpeakers()` signals that
+    /// the guarantee the caller asked for was not delivered: silent failure
+    /// here would let the Mac sleep while the menu bar says "Armed".
+    func acquire(reason: String) throws
     func release()
 }
 
@@ -15,8 +24,9 @@ public final class IOKitSleepAssertion: SleepPreventing {
     public init() {}
     public var isHeld: Bool { !ids.isEmpty }
 
-    public func acquire(reason: String) {
+    public func acquire(reason: String) throws {
         guard ids.isEmpty else { return }
+        var lastFailure: Int32 = kIOReturnError
         for type in [kIOPMAssertPreventUserIdleSystemSleep,
                      kIOPMAssertionTypePreventSystemSleep] {
             var id: IOPMAssertionID = 0
@@ -25,7 +35,16 @@ public final class IOKitSleepAssertion: SleepPreventing {
                 IOPMAssertionLevel(kIOPMAssertionLevelOn),
                 reason as CFString,
                 &id)
-            if result == kIOReturnSuccess { ids.append(id) }
+            if result == kIOReturnSuccess {
+                ids.append(id)
+            } else {
+                lastFailure = result
+            }
+        }
+        // One of the two is enough to keep the machine awake; only a total
+        // failure is worth reporting.
+        guard !ids.isEmpty else {
+            throw SleepAssertionError.assertionFailed(status: lastFailure)
         }
     }
 
@@ -36,9 +55,8 @@ public final class IOKitSleepAssertion: SleepPreventing {
 
     // Must be isolated to match the default main-actor isolation of the class,
     // and cannot be async (deinit cannot be async). Delegates to release() to
-    // maintain a single teardown path: if this deinit ran twice (impossible in
-    // normal Rust/ARC, but good discipline), release() safely handles an empty
-    // ids array.
+    // maintain a single teardown path: release() safely handles an empty ids
+    // array, so it is harmless however it is reached.
     isolated deinit {
         release()
     }
@@ -49,9 +67,14 @@ public final class FakeSleepAssertion: SleepPreventing {
     public private(set) var acquireCount = 0
     public private(set) var releaseCount = 0
     public private(set) var lastReason: String?
+    /// Models the real class's total-failure case: nothing asserted, throws.
+    public var shouldFailAcquire = false
     public init() {}
 
-    public func acquire(reason: String) {
+    public func acquire(reason: String) throws {
+        if shouldFailAcquire {
+            throw SleepAssertionError.assertionFailed(status: kIOReturnError)
+        }
         guard !isHeld else { return }
         isHeld = true
         acquireCount += 1

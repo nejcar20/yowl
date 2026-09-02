@@ -2,6 +2,10 @@ import Foundation
 
 public enum AlarmEngineError: Error, Equatable {
     case noPasscodeSet
+    /// Every available trigger reported `canFireNow == false`, so arming would
+    /// produce a shield icon and zero protection. Deliberately blocks the arm
+    /// instead of warning: "Armed" must mean protected.
+    case noArmableTrigger
 }
 
 /// Orchestrates triggers, responses and the state machine.
@@ -30,6 +34,13 @@ public final class AlarmEngine {
     /// (e.g. polling) to learn when response side effects have settled.
     public var onResponsesFired: (() -> Void)?
 
+    /// True when the last successful `arm()` could not take a sleep assertion,
+    /// so the Mac may sleep and stop observing triggers. Arming is *not*
+    /// blocked on this: a machine kept awake by other means (lid open, another
+    /// app's assertion, Amphetamine) is still protected, so a warning beats a
+    /// refusal. Cleared on every arm and disarm.
+    public private(set) var sleepAssertionFailed = false
+
     public init(triggers: [any Trigger],
                 responses: [any Response],
                 clock: AlarmClock,
@@ -47,11 +58,27 @@ public final class AlarmEngine {
         guard passcodes.hasPasscode else { throw AlarmEngineError.noPasscodeSet }
         guard state == .disarmed else { return }
 
+        // Pre-flight (spec §4's `arming` state): every check that can refuse
+        // the arm runs *before* any side effect, so a failed arm leaves
+        // nothing half-configured -- no sleep assertion held, no state change,
+        // no started triggers.
+        guard triggers.contains(where: \.canFireNow) else {
+            throw AlarmEngineError.noArmableTrigger
+        }
+
+        // The sleep assertion is best-effort: record the failure for the UI to
+        // warn about, but keep arming. See `sleepAssertionFailed`.
+        sleepAssertionFailed = false
+        do {
+            try sleepAssertion?.acquire(reason: "LaptopAlarm armed")
+        } catch {
+            sleepAssertionFailed = true
+        }
+
         // State is set to .armed before any trigger is started so a trigger
         // that calls back synchronously during start() (e.g. an
         // already-tripped lid-angle sensor) lands on a real .armed state
         // rather than a .disarmed one the reducer would silently no-op.
-        sleepAssertion?.acquire(reason: "LaptopAlarm armed")
         state = reduce(state, .arm, now: clock.now)
 
         for trigger in triggers {
@@ -69,6 +96,7 @@ public final class AlarmEngine {
         graceWork = nil
         triggers.forEach { $0.stop() }
         sleepAssertion?.release()
+        sleepAssertionFailed = false
         state = reduce(state, .disarm, now: clock.now)
         Task { for response in responses { await response.reset() } }
         return true
@@ -102,6 +130,12 @@ public final class AlarmEngine {
     private func fireResponses(trigger: TriggerID) {
         let context = AlarmContext(trigger: trigger, firedAt: clock.now)
         Task {
+            // Re-check state: this Task is unstructured, so a disarm can land
+            // between scheduling and running. Without the guard the disarm's
+            // `reset` Task can drain first and this one would then start the
+            // siren *after* the reset -- state .disarmed, savedState cleared,
+            // UI showing "Arm", and a screaming machine with no way to stop it.
+            guard case .firing = state else { return }
             for response in responses { await response.fire(context: context) }
             onResponsesFired?()
         }

@@ -73,3 +73,52 @@ private func makeResponse(volume: Float = 0.3, muted: Bool = true)
     await response.reset()
     #expect(response.isSounding == false)
 }
+
+// The whole point of `forceMaxVolumeOnBuiltInSpeakers()` throwing is that it
+// throws exactly when the siren will be inaudible (unmute or volume write
+// failed). The siren still fires -- failing toward noise -- but the UI must not
+// claim "Siren sounding" on a Mac we could not unmute. Before this fix,
+// `try?` discarded the throw and `isSounding` tracked only the player.
+@Test func firingReportsNotSoundingWhenForcingTheAudioFails() async {
+    let player = FakeSirenPlayer()
+    let audio = FakeAudioOutputControl(
+        state: AudioOutputState(deviceID: 1, volume: 0.3, muted: true))
+    audio.shouldFailForce = true
+    let response = SirenResponse(player: player, audio: audio)
+
+    await response.fire(context: ctx)
+    // The player did start: we still fire toward noise.
+    #expect(player.startCount == 1)
+    #expect(player.isPlaying == true)
+    // But we do not claim it is audible.
+    #expect(response.isSounding == false)
+}
+
+// Guards the other half of the conjunction: a successful force plus a
+// successful start is the only combination that reports sounding.
+@Test func firingReportsSoundingOnlyWhenBothForceAndStartSucceed() async {
+    let player = FakeSirenPlayer()
+    player.shouldFailStart = true
+    let audio = FakeAudioOutputControl(
+        state: AudioOutputState(deviceID: 1, volume: 0.3, muted: true))
+    audio.shouldFailForce = true
+    let response = SirenResponse(player: player, audio: audio)
+
+    await response.fire(context: ctx)
+    #expect(response.isSounding == false)
+}
+
+// A failed force must not stop the saved state from being restored later, or
+// disarming would leave the user's audio settings behind.
+@Test func resetStillRestoresAudioAfterAFailedForce() async {
+    let player = FakeSirenPlayer()
+    let original = AudioOutputState(deviceID: 1, volume: 0.3, muted: true)
+    let audio = FakeAudioOutputControl(state: original)
+    audio.shouldFailForce = true
+    let response = SirenResponse(player: player, audio: audio)
+
+    await response.fire(context: ctx)
+    await response.reset()
+    #expect(audio.restoredStates == [original])
+    #expect(response.isSounding == false)
+}

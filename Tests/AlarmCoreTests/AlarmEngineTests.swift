@@ -182,25 +182,165 @@ private func makeRig(graceSeconds: TimeInterval = 0, passcode: String = "1234") 
     #expect(observed == [.armed, .disarmed])
 }
 
-@Test func onResponsesFiredFiresAfterResponsesHaveRun() async throws {
+// Pins the whole `onResponsesFired` contract in one test, so it cannot pass
+// with `onResponsesFired?()` deleted from the engine: being armed alone must
+// not invoke it, it must fire exactly once per alarm, and it must fire only
+// *after* every response's fire(context:) has returned. The previous pair of
+// tests missed the middle assertion -- the "armed but nothing triggered" half
+// passed trivially with the callback unwired.
+@Test func onResponsesFiredFiresExactlyOnceAfterResponsesHaveRun() async throws {
     let rig = makeRig(graceSeconds: 0)
-    try rig.engine.arm()
     var callCount = 0
-    rig.engine.onResponsesFired = { callCount += 1 }
+    var sirenFireCountAtEachCall: [Int] = []
+    rig.engine.onResponsesFired = {
+        callCount += 1
+        sirenFireCountAtEachCall.append(rig.siren.fireCount)
+    }
+
+    try rig.engine.arm()
+    await Task.yield()
+    #expect(rig.engine.state == .armed)
+    #expect(callCount == 0)          // armed alone must not invoke it
+
     rig.trigger.simulateFire()
     await Task.yield()
     #expect(rig.siren.fireCount == 1)
-    #expect(callCount == 1)
+    #expect(callCount == 1)          // fails if `onResponsesFired?()` is deleted
+    // Fails if the callback were invoked before the responses ran.
+    #expect(sirenFireCountAtEachCall == [1])
 }
 
-@Test func onResponsesFiredDoesNotFireWhenArmedButNothingHasTriggered() async throws {
+// C2 pre-flight. PowerTrigger is edge-detected on AC->battery, so arming while
+// already on battery can never fire. Arming must refuse rather than hand the
+// user a shield icon and zero protection.
+@Test func armingThrowsWhenNoTriggerCanFireNow() throws {
+    let trigger = FakeTrigger(id: TriggerID("power"), canFireNow: false)
+    let store = InMemoryPasscodeStore()
+    try store.setPasscode("1234")
+    let engine = AlarmEngine(triggers: [trigger], responses: [],
+                             clock: TestClock(), passcodes: store,
+                             sleepAssertion: FakeSleepAssertion())
+    #expect(throws: AlarmEngineError.noArmableTrigger) { try engine.arm() }
+}
+
+@Test func armingSucceedsWhenAtLeastOneTriggerCanFire() throws {
+    let dead = FakeTrigger(id: TriggerID("power"), canFireNow: false)
+    let live = FakeTrigger(id: TriggerID("lid"), canFireNow: true)
+    let store = InMemoryPasscodeStore()
+    try store.setPasscode("1234")
+    let engine = AlarmEngine(triggers: [dead, live], responses: [],
+                             clock: TestClock(), passcodes: store,
+                             sleepAssertion: FakeSleepAssertion())
+    try engine.arm()
+    #expect(engine.state == .armed)
+}
+
+// A trigger that is unavailable on this build must not satisfy the pre-flight
+// either: capability filtering happens first, so only *available* triggers can
+// vouch for the arm.
+@Test func unavailableTriggerCannotSatisfyThePreflight() throws {
+    let unavailable = FakeTrigger(id: TriggerID("lid"), isAvailable: false,
+                                  canFireNow: true)
+    let store = InMemoryPasscodeStore()
+    try store.setPasscode("1234")
+    let engine = AlarmEngine(triggers: [unavailable], responses: [],
+                             clock: TestClock(), passcodes: store,
+                             sleepAssertion: FakeSleepAssertion())
+    #expect(throws: AlarmEngineError.noArmableTrigger) { try engine.arm() }
+}
+
+// A refused arm must leave nothing half-configured: the pre-flight runs before
+// any side effect, so no sleep assertion is held, the state is untouched, and
+// no trigger was started.
+@Test func failedArmLeavesNothingHalfConfigured() throws {
+    let trigger = FakeTrigger(id: TriggerID("power"), canFireNow: false)
+    let sleep = FakeSleepAssertion()
+    let store = InMemoryPasscodeStore()
+    try store.setPasscode("1234")
+    let engine = AlarmEngine(triggers: [trigger], responses: [],
+                             clock: TestClock(), passcodes: store,
+                             sleepAssertion: sleep)
+    #expect(throws: AlarmEngineError.noArmableTrigger) { try engine.arm() }
+    #expect(engine.state == .disarmed)
+    #expect(sleep.isHeld == false)
+    #expect(sleep.acquireCount == 0)
+    #expect(trigger.isStarted == false)
+}
+
+// I1: a sleep assertion that cannot be taken is a warning, not a refusal -- a
+// machine kept awake by other means is still protected -- but it must be
+// visible rather than silent.
+@Test func armingProceedsAndReportsWhenTheSleepAssertionFails() throws {
+    let trigger = FakeTrigger(id: TriggerID("power"))
+    let sleep = FakeSleepAssertion()
+    sleep.shouldFailAcquire = true
+    let store = InMemoryPasscodeStore()
+    try store.setPasscode("1234")
+    let engine = AlarmEngine(triggers: [trigger], responses: [],
+                             clock: TestClock(), passcodes: store,
+                             sleepAssertion: sleep)
+    try engine.arm()
+    #expect(engine.state == .armed)
+    #expect(trigger.isStarted == true)
+    #expect(sleep.isHeld == false)
+    #expect(engine.sleepAssertionFailed == true)
+}
+
+@Test func aSuccessfulArmReportsNoSleepAssertionFailure() throws {
+    let rig = makeRig()
+    try rig.engine.arm()
+    #expect(rig.engine.sleepAssertionFailed == false)
+}
+
+// Disarming clears the warning so it cannot survive into the next arm cycle.
+@Test func disarmingClearsTheSleepAssertionWarning() throws {
+    let trigger = FakeTrigger(id: TriggerID("power"))
+    let sleep = FakeSleepAssertion()
+    sleep.shouldFailAcquire = true
+    let store = InMemoryPasscodeStore()
+    try store.setPasscode("1234")
+    let engine = AlarmEngine(triggers: [trigger], responses: [],
+                             clock: TestClock(), passcodes: store,
+                             sleepAssertion: sleep)
+    try engine.arm()
+    #expect(engine.sleepAssertionFailed == true)
+    #expect(engine.disarm(passcode: "1234") == true)
+    #expect(engine.sleepAssertionFailed == false)
+}
+
+// I2: `fireResponses` spawns an unstructured Task, so a disarm can land
+// between scheduling it and running it. Without the state re-check the
+// disarm's `reset` Task can drain first and the fire Task would then start the
+// siren *after* the reset -- state .disarmed, savedState cleared, UI showing
+// "Arm", and a screaming machine with no visible way to stop it.
+@Test func aDisarmBetweenSchedulingAndRunningCancelsTheFire() async throws {
     let rig = makeRig(graceSeconds: 0)
     try rig.engine.arm()
-    var callCount = 0
-    rig.engine.onResponsesFired = { callCount += 1 }
-    await Task.yield()
-    #expect(rig.engine.state == .armed)
-    #expect(callCount == 0)
+    rig.trigger.simulateFire()             // state -> .firing, fire Task queued
+    #expect(rig.engine.state == .firing(trigger: TriggerID("power")))
+    // Disarm before the fire Task has had a chance to run.
+    #expect(rig.engine.disarm(passcode: "1234") == true)
+    #expect(rig.engine.state == .disarmed)
+
+    // Drain both unstructured Tasks in either order.
+    for _ in 0..<8 { await Task.yield() }
+
+    // Without the guard this is 1: the siren starts after the reset.
+    #expect(rig.siren.fireCount == 0)
+    #expect(rig.engine.state == .disarmed)
+}
+
+// The same interleaving, one step later: the grace timer expires and then a
+// disarm lands before the fire Task runs.
+@Test func aDisarmAfterGraceExpiryButBeforeTheFireTaskRunsCancelsTheFire() async throws {
+    let rig = makeRig(graceSeconds: 10)
+    try rig.engine.arm()
+    rig.trigger.simulateFire()
+    rig.clock.advance(by: 10)              // grace expires, fire Task queued
+    #expect(rig.engine.disarm(passcode: "1234") == true)
+    for _ in 0..<8 { await Task.yield() }
+    #expect(rig.siren.fireCount == 0)
+    #expect(rig.engine.state == .disarmed)
 }
 
 // Re-arming after an alarm must work, or the app is single-use.

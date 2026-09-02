@@ -8,6 +8,13 @@ public final class PowerTrigger: Trigger {
     public let isAvailable = true
     public let graceSeconds: TimeInterval
 
+    /// Only an AC -> battery edge fires this trigger, so arming while already
+    /// on battery can never fire: the edge is gone. The engine uses this to
+    /// refuse the arm rather than leave the user with a shield icon and no
+    /// protection (the likely sequence being: thief pulls charger, owner
+    /// disarms, owner re-arms while still unplugged).
+    public var canFireNow: Bool { monitor.isOnACPower }
+
     private let monitor: PowerSourceMonitoring
     private var wasOnAC: Bool
     private var onFire: ((TriggerID) -> Void)?

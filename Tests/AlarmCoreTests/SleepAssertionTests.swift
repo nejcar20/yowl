@@ -1,24 +1,24 @@
 import Testing
 @testable import AlarmCore
 
-@Test func acquiringHoldsTheAssertion() {
+@Test func acquiringHoldsTheAssertion() throws {
     let assertion = FakeSleepAssertion()
-    assertion.acquire(reason: "armed")
+    try assertion.acquire(reason: "armed")
     #expect(assertion.isHeld == true)
     #expect(assertion.lastReason == "armed")
 }
 
-@Test func releasingDropsTheAssertion() {
+@Test func releasingDropsTheAssertion() throws {
     let assertion = FakeSleepAssertion()
-    assertion.acquire(reason: "armed")
+    try assertion.acquire(reason: "armed")
     assertion.release()
     #expect(assertion.isHeld == false)
 }
 
-@Test func acquiringTwiceDoesNotDoubleAcquire() {
+@Test func acquiringTwiceDoesNotDoubleAcquire() throws {
     let assertion = FakeSleepAssertion()
-    assertion.acquire(reason: "armed")
-    assertion.acquire(reason: "armed")
+    try assertion.acquire(reason: "armed")
+    try assertion.acquire(reason: "armed")
     #expect(assertion.acquireCount == 1)
 }
 
@@ -30,9 +30,9 @@ import Testing
 }
 
 // Verified grantable 2026-09-02.
-@Test func realAssertionCanBeAcquiredAndReleased() {
+@Test func realAssertionCanBeAcquiredAndReleased() throws {
     let assertion = IOKitSleepAssertion()
-    assertion.acquire(reason: "unit test")
+    try assertion.acquire(reason: "unit test")
     #expect(assertion.isHeld == true)
     assertion.release()
     #expect(assertion.isHeld == false)
