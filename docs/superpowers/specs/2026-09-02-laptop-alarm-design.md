@@ -22,7 +22,7 @@ Probed on the target machine before design:
 | Capability | Finding |
 |---|---|
 | Accelerometer / Sudden Motion Sensor | **Absent.** `ioreg -c SMCMotionSensor` returns nothing; zero motion keys in the IOKit registry. Apple removed the SMS along with spinning disks. True inertial motion detection is impossible. |
-| Lid angle sensor | **Present.** HID device, VendorID `0x05AC`, ProductID `0x8104`, usage page `0x20` (Sensors), usage `0x8A`. Reports hinge angle continuously. |
+| Lid angle sensor | **Present and verified readable.** HID device VendorID `0x05AC`, ProductID `0x8104`, usage page `0x20` (Sensors), collection primary usage `0x8A`. The angle itself is element **usage `0x47F`**, logical range 0-360 (read 110 deg on an open lid). No TCC prompt, no entitlement, no root. |
 | AC power state | Available via IOKit power sources. No permissions. |
 | Code signing | `Apple Development` identity present. `Developer ID Application` and `Apple Distribution` still required for sale (paid Apple Developer Program). |
 
@@ -203,10 +203,11 @@ explicitly at the point of enabling alerts.
 ## 7. Implementation notes
 
 - **Sleep prevention.** While armed, hold `IOPMAssertionCreateWithName` with
-  `PreventUserIdleSystemSleep` and `PreventSystemSleep`. Whether these defeat
-  clamshell sleep on current macOS is **unproven and must be established first**
-  (see Phase 0). The lid angle sensor mitigates the risk regardless, since the
-  siren starts while the lid is still degrees from shut.
+  `PreventUserIdleSystemSleep` and `PreventSystemSleep`. Both are **verified
+  grantable** (return `kIOReturnSuccess`). Whether they defeat *clamshell* sleep
+  is still unproven and requires a physical lid-close test (Phase 0). The lid
+  angle sensor mitigates the risk regardless, since the siren starts while the
+  lid is still degrees from shut.
 - **Forced audio.** Save prior audio state, then: switch default output to the
   built-in speakers (defeats plugged-in headphones), unmute
   (`kAudioDevicePropertyMute`), set `kAudioDevicePropertyVolumeScalar` to 1.0,
@@ -261,8 +262,25 @@ substance is unit-testable without a physical theft.
   cached in the Keychain, with an offline grace period.
 - **Privacy policy** naming ntfy.sh as a processor. Mandatory for both channels.
 
-## 11. Open questions
+## 11. Phase 0 findings (probed 2026-09-02)
 
-- Does the power assertion actually survive clamshell close? Resolved by Phase 0.
-- Is Bluetooth paired-device disconnect worth shipping at all, given it measures
-  connection state rather than distance? Deferred to P2 pending Phase 0 findings.
+Resolved ahead of planning, by compiling and running against the real SDK:
+
+| Question | Result |
+|---|---|
+| AC-power state + change notification | Works. `IOPSCopyPowerSourcesInfo` / `IOPSNotificationCreateRunLoopSource`. |
+| `PreventUserIdleSystemSleep` assertion | Granted. |
+| `PreventSystemSleep` assertion | Granted. |
+| CoreAudio default output + volume | Works. Built-in speakers report transport type `bltn`; volume readable/writable on the main element. |
+| `SACLockScreenImmediate` symbol | Present in login.framework. |
+| Lid angle sensor | Readable. Element usage `0x47F`, 0-360. |
+| SwiftUI `MenuBarExtra` as a plain SPM executable | Builds and links. **No Xcode project needed until the MAS target in Phase 5.** |
+
+### Still open
+
+- **Does the power assertion survive a clamshell close?** Not answerable without
+  physically shutting the lid; it is the first task of the implementation plan.
+  A negative result downgrades the lid trigger to "a burst of noise before sleep"
+  and must be reflected in marketing copy.
+- **Is Bluetooth paired-device disconnect worth shipping at all**, given it
+  measures connection state rather than distance? Deferred to P2.
