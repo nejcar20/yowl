@@ -1,7 +1,10 @@
 import Foundation
 
-/// Test doubles. Kept in the library (not the test target) so future test
-/// targets and SwiftUI previews can share them.
+#if DEBUG
+// Test doubles are Debug-only. They are `public` so the test target and
+// SwiftUI previews (both Debug builds) can reach them; shipping them in a
+// Release build of a security product would export, among other things, an
+// in-memory passcode store with a public accessor for the raw hash record.
 public final class FakeTrigger: Trigger {
     public let id: TriggerID
     public let isAvailable: Bool
@@ -54,3 +57,4 @@ public final class FakeResponse: Response {
 
     public func reset() async { resetCount += 1 }
 }
+#endif  // DEBUG

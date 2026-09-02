@@ -73,6 +73,11 @@ public final class IOKitPowerSourceMonitor: PowerSourceMonitoring {
     }
 }
 
+#if DEBUG
+// Test doubles are Debug-only. They are `public` so the test target and
+// SwiftUI previews (both Debug builds) can reach them; shipping them in a
+// Release build of a security product would export, among other things, an
+// in-memory passcode store with a public accessor for the raw hash record.
 public final class FakePowerSourceMonitor: PowerSourceMonitoring {
     public private(set) var isOnACPower: Bool
     private var onChange: ((Bool) -> Void)?
@@ -90,3 +95,4 @@ public final class FakePowerSourceMonitor: PowerSourceMonitoring {
         onChange?(isOnAC)
     }
 }
+#endif  // DEBUG

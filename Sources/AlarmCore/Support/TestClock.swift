@@ -1,5 +1,10 @@
 import Foundation
 
+#if DEBUG
+// Test doubles are Debug-only. They are `public` so the test target and
+// SwiftUI previews (both Debug builds) can reach them; shipping them in a
+// Release build of a security product would export, among other things, an
+// in-memory passcode store with a public accessor for the raw hash record.
 /// Manually advanced clock for tests. Not used in production code.
 public final class TestClock: AlarmClock {
     private final class Work: ScheduledWork {
@@ -34,3 +39,4 @@ public final class TestClock: AlarmClock {
         due.forEach { $0.body() }
     }
 }
+#endif  // DEBUG

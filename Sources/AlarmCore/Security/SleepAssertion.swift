@@ -62,6 +62,11 @@ public final class IOKitSleepAssertion: SleepPreventing {
     }
 }
 
+#if DEBUG
+// Test doubles are Debug-only. They are `public` so the test target and
+// SwiftUI previews (both Debug builds) can reach them; shipping them in a
+// Release build of a security product would export, among other things, an
+// in-memory passcode store with a public accessor for the raw hash record.
 public final class FakeSleepAssertion: SleepPreventing {
     public private(set) var isHeld = false
     public private(set) var acquireCount = 0
@@ -87,3 +92,4 @@ public final class FakeSleepAssertion: SleepPreventing {
         releaseCount += 1
     }
 }
+#endif  // DEBUG

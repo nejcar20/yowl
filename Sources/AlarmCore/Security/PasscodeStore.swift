@@ -41,7 +41,9 @@ enum PasscodeHasher {
                 rounds,
                 &out, hashBytes)
         }
-        guard status == 0 else { throw PasscodeError.cryptoFailure(status) }
+        guard status == Int32(kCCSuccess) else {
+            throw PasscodeError.cryptoFailure(status)
+        }
         return Data(out)
     }
 
@@ -63,6 +65,11 @@ enum PasscodeHasher {
     }
 }
 
+#if DEBUG
+// Test doubles are Debug-only. They are `public` so the test target and
+// SwiftUI previews (both Debug builds) can reach them; shipping them in a
+// Release build of a security product would export, among other things, an
+// in-memory passcode store with a public accessor for the raw hash record.
 /// Used by tests so CI never touches the real Keychain.
 public final class InMemoryPasscodeStore: PasscodeStoring {
     public private(set) var rawRecord: Data?
@@ -81,6 +88,7 @@ public final class InMemoryPasscodeStore: PasscodeStoring {
 
     public func clear() throws { rawRecord = nil }
 }
+#endif  // DEBUG
 
 public final class KeychainPasscodeStore: PasscodeStoring {
     private let service: String

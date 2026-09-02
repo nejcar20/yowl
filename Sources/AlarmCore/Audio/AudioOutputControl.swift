@@ -276,6 +276,11 @@ public final class CoreAudioOutputControl: AudioOutputControlling {
     }
 }
 
+#if DEBUG
+// Test doubles are Debug-only. They are `public` so the test target and
+// SwiftUI previews (both Debug builds) can reach them; shipping them in a
+// Release build of a security product would export, among other things, an
+// in-memory passcode store with a public accessor for the raw hash record.
 public final class FakeAudioOutputControl: AudioOutputControlling {
     public private(set) var state: AudioOutputState
     public private(set) var forceCount = 0
@@ -312,3 +317,4 @@ public final class FakeAudioOutputControl: AudioOutputControlling {
         return !shouldFailRestore
     }
 }
+#endif  // DEBUG

@@ -31,5 +31,8 @@ cat > "${APP_DIR}/Contents/Info.plist" <<PLIST
 PLIST
 
 # Ad-hoc signature is enough for local runs; Phase 6 switches to Developer ID.
-codesign --force --deep --sign - "${APP_DIR}"
+# No --deep: it is deprecated and is not a valid way to sign for Developer ID /
+# notarisation, which this command seeds. Nested code, when there is any, must
+# be signed inside-out before the bundle itself.
+codesign --force --sign - "${APP_DIR}"
 echo "Built ${APP_DIR}"

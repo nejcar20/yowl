@@ -138,6 +138,11 @@ public final class AVSirenPlayer: SirenPlaying {
     }
 }
 
+#if DEBUG
+// Test doubles are Debug-only. They are `public` so the test target and
+// SwiftUI previews (both Debug builds) can reach them; shipping them in a
+// Release build of a security product would export, among other things, an
+// in-memory passcode store with a public accessor for the raw hash record.
 public final class FakeSirenPlayer: SirenPlaying {
     public private(set) var isPlaying = false
     public private(set) var startCount = 0
@@ -161,3 +166,4 @@ public final class FakeSirenPlayer: SirenPlaying {
         isPlaying = false
     }
 }
+#endif  // DEBUG
