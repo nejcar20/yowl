@@ -1,6 +1,6 @@
 import Foundation
 import IOKit.ps
-@preconcurrency import CoreFoundation
+import CoreFoundation
 
 public protocol PowerSourceMonitoring: AnyObject {
     var isOnACPower: Bool { get }
@@ -51,7 +51,9 @@ public final class IOKitPowerSourceMonitor: PowerSourceMonitoring {
         onChange = nil
     }
 
-    deinit {
+    // Isolated deinit runs on the class's actor (MainActor), allowing safe access to
+    // main-thread-only CFRunLoopSource property without data-race diagnostics.
+    isolated deinit {
         if let source {
             CFRunLoopRemoveSource(CFRunLoopGetMain(), source, .defaultMode)
         }
