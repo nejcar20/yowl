@@ -11,6 +11,9 @@ public final class SirenResponse: Response {
     /// Captured on the first fire only, so a repeat fire cannot overwrite it
     /// with the already-forced state.
     private var savedState: AudioOutputState?
+    /// True if the siren is actually producing sound. False if fire was called
+    /// but the player failed to start.
+    public private(set) var isSounding = false
 
     public init(player: SirenPlaying, audio: AudioOutputControlling) {
         self.player = player
@@ -20,11 +23,12 @@ public final class SirenResponse: Response {
     public func fire(context: AlarmContext) async {
         if savedState == nil { savedState = audio.currentState() }
         try? audio.forceMaxVolumeOnBuiltInSpeakers()
-        player.start()
+        isSounding = player.start()
     }
 
     public func reset() async {
         player.stop()
+        isSounding = false
         if let savedState {
             audio.restore(savedState)
             self.savedState = nil

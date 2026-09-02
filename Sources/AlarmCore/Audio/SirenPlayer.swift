@@ -3,8 +3,20 @@ import AVFoundation
 
 public protocol SirenPlaying: AnyObject {
     var isPlaying: Bool { get }
-    func start()
+    @discardableResult func start() -> Bool
     func stop()
+}
+
+/// Oscillator state captured in an unsafe pointer, owned exclusively by the render block
+/// between start() and stop(). This avoids ARC, allocation, and isolation checks on the
+/// audio thread.
+private struct OscillatorState {
+    var phase: Double
+    var elapsed: Double
+    let sampleRate: Double
+    let lowHz: Double
+    let highHz: Double
+    let sweepSeconds: Double
 }
 
 /// Generates a two-tone siren in real time. No bundled audio asset, so there
@@ -12,35 +24,44 @@ public protocol SirenPlaying: AnyObject {
 public final class AVSirenPlayer: SirenPlaying {
     private let engine = AVAudioEngine()
     private var sourceNode: AVAudioSourceNode?
-    private var phase: Double = 0
-    private var elapsed: Double = 0
+    /// Owned and mutated only by the render block; allocated in start(), deallocated in stop()
+    private var oscillatorState: UnsafeMutablePointer<OscillatorState>?
     public private(set) var isPlaying = false
-
-    private let lowHz = 700.0
-    private let highHz = 1100.0
-    private let sweepSeconds = 0.5
 
     public init() {}
 
-    public func start() {
-        guard !isPlaying else { return }
+    @discardableResult
+    public func start() -> Bool {
+        guard !isPlaying else { return true }
+
         let format = engine.outputNode.inputFormat(forBus: 0)
         let sampleRate = format.sampleRate > 0 ? format.sampleRate : 44_100
 
-        let node = AVAudioSourceNode { [weak self] _, _, frameCount, audioBufferList in
-            guard let self else { return noErr }
+        // Allocate oscillator state. The render block will own this and mutate it
+        // without touching any main-actor-isolated state.
+        let state = UnsafeMutablePointer<OscillatorState>.allocate(capacity: 1)
+        state.initialize(to: OscillatorState(
+            phase: 0,
+            elapsed: 0,
+            sampleRate: sampleRate,
+            lowHz: 700.0,
+            highHz: 1100.0,
+            sweepSeconds: 0.5
+        ))
+
+        let node = AVAudioSourceNode { _, _, frameCount, audioBufferList in
             let buffers = UnsafeMutableAudioBufferListPointer(audioBufferList)
             for frame in 0..<Int(frameCount) {
                 // Triangle sweep between the two tones.
-                let cyclePosition = self.elapsed
-                    .truncatingRemainder(dividingBy: self.sweepSeconds * 2) / self.sweepSeconds
+                let cyclePosition = state.pointee.elapsed
+                    .truncatingRemainder(dividingBy: state.pointee.sweepSeconds * 2) / state.pointee.sweepSeconds
                 let ramp = cyclePosition < 1 ? cyclePosition : 2 - cyclePosition
-                let frequency = self.lowHz + (self.highHz - self.lowHz) * ramp
+                let frequency = state.pointee.lowHz + (state.pointee.highHz - state.pointee.lowHz) * ramp
 
-                let sample = Float(sin(self.phase) * 0.9)
-                self.phase += 2 * .pi * frequency / sampleRate
-                if self.phase > 2 * .pi { self.phase -= 2 * .pi }
-                self.elapsed += 1 / sampleRate
+                let sample = Float(sin(state.pointee.phase) * 0.9)
+                state.pointee.phase += 2 * .pi * frequency / state.pointee.sampleRate
+                if state.pointee.phase > 2 * .pi { state.pointee.phase -= 2 * .pi }
+                state.pointee.elapsed += 1 / state.pointee.sampleRate
 
                 for buffer in buffers {
                     let pointer = UnsafeMutableBufferPointer<Float>(buffer)
@@ -51,25 +72,39 @@ public final class AVSirenPlayer: SirenPlaying {
         }
 
         sourceNode = node
+        oscillatorState = state
         engine.attach(node)
         engine.connect(node, to: engine.mainMixerNode, format: nil)
         engine.mainMixerNode.outputVolume = 1.0
         do {
             try engine.start()
             isPlaying = true
+            return true
         } catch {
+            // Failure: stop engine, detach node, clean up state.
+            engine.stop()
             engine.detach(node)
             sourceNode = nil
+            state.deinitialize(count: 1)
+            state.deallocate()
+            oscillatorState = nil
+            return false
         }
     }
 
     public func stop() {
         guard isPlaying else { return }
+        // Stop engine and detach node first, so the render block cannot run again.
         engine.stop()
         if let sourceNode { engine.detach(sourceNode) }
         sourceNode = nil
-        phase = 0
-        elapsed = 0
+
+        // Now deallocate the oscillator state.
+        if let state = oscillatorState {
+            state.deinitialize(count: 1)
+            state.deallocate()
+            oscillatorState = nil
+        }
         isPlaying = false
     }
 }
@@ -78,7 +113,22 @@ public final class FakeSirenPlayer: SirenPlaying {
     public private(set) var isPlaying = false
     public private(set) var startCount = 0
     public private(set) var stopCount = 0
+    public var shouldFailStart = false
+
     public init() {}
-    public func start() { startCount += 1; isPlaying = true }
-    public func stop() { stopCount += 1; isPlaying = false }
+
+    @discardableResult
+    public func start() -> Bool {
+        startCount += 1
+        if shouldFailStart {
+            return false
+        }
+        isPlaying = true
+        return true
+    }
+
+    public func stop() {
+        stopCount += 1
+        isPlaying = false
+    }
 }

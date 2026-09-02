@@ -17,6 +17,7 @@ private func makeResponse(volume: Float = 0.3, muted: Bool = true)
     let (response, player, audio) = makeResponse()
     await response.fire(context: ctx)
     #expect(player.isPlaying == true)
+    #expect(response.isSounding == true)
     #expect(audio.state.volume == 1.0)
     #expect(audio.state.muted == false)
 }
@@ -50,4 +51,25 @@ private func makeResponse(volume: Float = 0.3, muted: Bool = true)
     let (response, _, _) = makeResponse()
     #expect(response.isAvailable == true)
     #expect(response.identifier == "siren")
+}
+
+@Test func firingReportsNotSoundingWhenPlayerFailsToStart() async {
+    let player = FakeSirenPlayer()
+    player.shouldFailStart = true
+    let audio = FakeAudioOutputControl(
+        state: AudioOutputState(deviceID: 1, volume: 0.3, muted: true))
+    let response = SirenResponse(player: player, audio: audio)
+
+    await response.fire(context: ctx)
+    #expect(response.isSounding == false)
+    #expect(player.isPlaying == false)
+    #expect(player.startCount == 1)
+}
+
+@Test func resettingClearsIsSoundingFlag() async {
+    let (response, _, _) = makeResponse()
+    await response.fire(context: ctx)
+    #expect(response.isSounding == true)
+    await response.reset()
+    #expect(response.isSounding == false)
 }
