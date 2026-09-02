@@ -176,6 +176,32 @@ These are real and must not be papered over in marketing copy:
   stored in the Keychain. Weaker, and honestly so — a thief can hold the power
   button. Documented, not hidden.
 
+## 5a. Per-trigger and per-response selection (Phase 2+)
+
+The user chooses which triggers and which responses are active. Someone in a
+cafe may want the charger trigger only; someone at a coworking desk may want
+camera motion but no siren until they are further away.
+
+**This is a second axis, not an extension of capability gating, and the two must
+not be merged.** `isAvailable` answers "can this run on this machine and in this
+build?" — it is what lets the sandboxed App Store build drop screen-lock and
+lid-angle, and the user must never be able to switch it on. The new axis answers
+"does the user want this one active?" A feature fires only when
+`isAvailable && isEnabled`.
+
+Consequences to design for:
+
+- Preferences persist across launches and are per-trigger and per-response.
+- The UI only offers toggles for features reporting `isAvailable`; an
+  unavailable feature is absent, not shown-but-disabled, so the App Store build
+  never advertises what it cannot do.
+- **Disabling every trigger must be refused at arm time**, reusing the Phase 1
+  `noArmableTrigger` pre-flight. The same rule applies: "Armed" must mean
+  protected. Disabling every *response* deserves at least a warning — an alarm
+  that detects theft and does nothing is not an alarm.
+- Defaults should be everything available switched on. A user who never opens
+  settings gets the most protection, not the least.
+
 ## 6. Alert transport (provider-agnostic)
 
 Push delivery is abstracted so the provider can be replaced without touching the
