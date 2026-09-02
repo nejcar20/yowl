@@ -110,14 +110,13 @@ public final class AVSirenPlayer: SirenPlaying {
         isPlaying = false
     }
 
-    // Isolated deinit runs on MainActor, allowing safe cleanup of audio resources
-    // if the player is released while still playing. Prevents memory leak of the
-    // manually-allocated oscillatorState pointer.
+    // Isolated deinit reuses stop() to ensure correct teardown ordering: the engine
+    // and render node must stop before deallocating the oscillatorState pointer.
+    // This is the only teardown path, preventing the duplication that led to
+    // use-after-free in an earlier version. oscillatorState is non-nil only when
+    // isPlaying == true, so stop()'s guard will never skip a live allocation.
     isolated deinit {
-        if let state = oscillatorState {
-            state.deinitialize(count: 1)
-            state.deallocate()
-        }
+        stop()
     }
 }
 
