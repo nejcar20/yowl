@@ -13,7 +13,6 @@ final class AppModel: ObservableObject {
     private let engine: AlarmEngine
     private let passcodes: KeychainPasscodeStore
     private let siren: SirenResponse
-    private var sirenWatchTask: Task<Void, Never>?
 
     init() {
         let passcodes = KeychainPasscodeStore()
@@ -38,7 +37,18 @@ final class AppModel: ObservableObject {
                              sleepAssertion: IOKitSleepAssertion())
         engine.onStateChange = { [weak self] newState in
             self?.state = newState
-            self?.updateSirenWatcher(for: newState)
+            // Clear here (not just on the next fire) so a stale "sounding"
+            // status cannot survive a disarm.
+            guard case .firing = newState else {
+                self?.isSirenSounding = false
+                return
+            }
+        }
+        // Mirrors onStateChange: the engine tells us when it knows, rather
+        // than AppModel polling siren.isSounding on its own timer.
+        engine.onResponsesFired = { [weak self] in
+            guard let self, case .firing = self.state else { return }
+            self.isSirenSounding = self.siren.isSounding
         }
     }
 
@@ -80,27 +90,6 @@ final class AppModel: ObservableObject {
         } else {
             passcodeEntry = ""
             errorMessage = "Wrong passcode."
-        }
-    }
-
-    /// The siren's `fire()` runs asynchronously just after the state
-    /// transition to `.firing` is observed here, so `isSounding` briefly
-    /// lags. Poll for a moment rather than reporting a stale "silent" status.
-    private func updateSirenWatcher(for state: AlarmState) {
-        guard case .firing = state else {
-            sirenWatchTask?.cancel()
-            sirenWatchTask = nil
-            isSirenSounding = false
-            return
-        }
-        guard sirenWatchTask == nil else { return }
-        sirenWatchTask = Task { [weak self] in
-            for _ in 0..<20 {
-                guard let self, case .firing = self.state else { return }
-                self.isSirenSounding = self.siren.isSounding
-                if self.isSirenSounding { return }
-                try? await Task.sleep(nanoseconds: 100_000_000)
-            }
         }
     }
 }

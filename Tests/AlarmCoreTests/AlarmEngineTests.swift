@@ -182,6 +182,27 @@ private func makeRig(graceSeconds: TimeInterval = 0, passcode: String = "1234") 
     #expect(observed == [.armed, .disarmed])
 }
 
+@Test func onResponsesFiredFiresAfterResponsesHaveRun() async throws {
+    let rig = makeRig(graceSeconds: 0)
+    try rig.engine.arm()
+    var callCount = 0
+    rig.engine.onResponsesFired = { callCount += 1 }
+    rig.trigger.simulateFire()
+    await Task.yield()
+    #expect(rig.siren.fireCount == 1)
+    #expect(callCount == 1)
+}
+
+@Test func onResponsesFiredDoesNotFireWhenArmedButNothingHasTriggered() async throws {
+    let rig = makeRig(graceSeconds: 0)
+    try rig.engine.arm()
+    var callCount = 0
+    rig.engine.onResponsesFired = { callCount += 1 }
+    await Task.yield()
+    #expect(rig.engine.state == .armed)
+    #expect(callCount == 0)
+}
+
 // Re-arming after an alarm must work, or the app is single-use.
 @Test func rearmingAfterAnAlarmWorks() async throws {
     let rig = makeRig(graceSeconds: 0)

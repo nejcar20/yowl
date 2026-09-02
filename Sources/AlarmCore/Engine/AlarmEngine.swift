@@ -24,6 +24,11 @@ public final class AlarmEngine {
     }
 
     public var onStateChange: ((AlarmState) -> Void)?
+    /// Invoked after every response's `fire(context:)` has returned for a
+    /// given alarm firing. Mirrors `onStateChange`: one outward-facing
+    /// callback per concern, so callers never need a second mechanism
+    /// (e.g. polling) to learn when response side effects have settled.
+    public var onResponsesFired: (() -> Void)?
 
     public init(triggers: [any Trigger],
                 responses: [any Response],
@@ -96,6 +101,9 @@ public final class AlarmEngine {
 
     private func fireResponses(trigger: TriggerID) {
         let context = AlarmContext(trigger: trigger, firedAt: clock.now)
-        Task { for response in responses { await response.fire(context: context) } }
+        Task {
+            for response in responses { await response.fire(context: context) }
+            onResponsesFired?()
+        }
     }
 }
