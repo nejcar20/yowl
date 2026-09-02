@@ -81,6 +81,11 @@ final class AppModel: ObservableObject {
         screenLockEnabled = lock.isActive
         graceSeconds = preferences.graceSeconds
         launchAtLogin = Self.loginItemIsRegistered()
+        // Set at init too, not only when the toggle is touched: a relaunch
+        // while approval is still pending would otherwise show the toggle on
+        // with no explanation, and the user would believe they are protected at
+        // every login when they are not.
+        settingsMessage = Self.pendingApprovalMessage()
     }
 
     // MARK: - Grace countdown
@@ -187,13 +192,18 @@ final class AppModel: ObservableObject {
             // back with no explanation, and the user would reasonably conclude
             // the app is broken — or worse, think they are protected at every
             // login when they are not.
-            settingsMessage = SMAppService.mainApp.status == .requiresApproval
-                ? "Approve LaptopAlarm in System Settings ▸ General ▸ Login Items to start it at login."
-                : nil
+            settingsMessage = Self.pendingApprovalMessage()
         } catch {
             launchAtLogin = Self.loginItemIsRegistered()
             settingsMessage = "Could not change the login item. Run the app from /Applications and try again."
         }
+    }
+
+    /// Non-nil while macOS has the login item registered but unapproved.
+    private static func pendingApprovalMessage() -> String? {
+        SMAppService.mainApp.status == .requiresApproval
+            ? "Approve LaptopAlarm in System Settings ▸ General ▸ Login Items to start it at login."
+            : nil
     }
 
     private static func loginItemIsRegistered() -> Bool {
