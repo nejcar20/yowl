@@ -4,6 +4,7 @@ import CommonCrypto
 
 public enum PasscodeError: Error, Equatable {
     case empty
+    case cryptoFailure(Int32)
     case keychain(OSStatus)
 }
 
@@ -20,17 +21,19 @@ enum PasscodeHasher {
     static let hashBytes = 32
     static let rounds: UInt32 = 210_000   // OWASP 2023 guidance for PBKDF2-SHA256
 
-    static func randomSalt() -> Data {
+    static func randomSalt() throws -> Data {
         var bytes = [UInt8](repeating: 0, count: saltBytes)
-        _ = SecRandomCopyBytes(kSecRandomDefault, saltBytes, &bytes)
+        let status = SecRandomCopyBytes(kSecRandomDefault, saltBytes, &bytes)
+        guard status == errSecSuccess else { throw PasscodeError.cryptoFailure(status) }
         return Data(bytes)
     }
 
-    static func hash(_ passcode: String, salt: Data) -> Data {
+    static func hash(_ passcode: String, salt: Data) throws -> Data {
         var out = [UInt8](repeating: 0, count: hashBytes)
         let pw = Array(passcode.utf8)
+        var status: Int32 = 0
         salt.withUnsafeBytes { saltBuf in
-            _ = CCKeyDerivationPBKDF(
+            status = CCKeyDerivationPBKDF(
                 CCPBKDFAlgorithm(kCCPBKDF2),
                 pw.map { Int8(bitPattern: $0) }, pw.count,
                 saltBuf.bindMemory(to: UInt8.self).baseAddress, salt.count,
@@ -38,19 +41,20 @@ enum PasscodeHasher {
                 rounds,
                 &out, hashBytes)
         }
+        guard status == 0 else { throw PasscodeError.cryptoFailure(status) }
         return Data(out)
     }
 
-    static func makeRecord(_ passcode: String) -> Data {
-        let salt = randomSalt()
-        return salt + hash(passcode, salt: salt)
+    static func makeRecord(_ passcode: String) throws -> Data {
+        let salt = try randomSalt()
+        return salt + (try hash(passcode, salt: salt))
     }
 
     static func matches(_ passcode: String, record: Data) -> Bool {
         guard record.count == saltBytes + hashBytes else { return false }
         let salt = record.prefix(saltBytes)
         let expected = record.suffix(hashBytes)
-        let actual = hash(passcode, salt: Data(salt))
+        guard let actual = try? hash(passcode, salt: Data(salt)) else { return false }
         // Constant-time comparison.
         guard actual.count == expected.count else { return false }
         var diff: UInt8 = 0
@@ -67,7 +71,7 @@ public final class InMemoryPasscodeStore: PasscodeStoring {
 
     public func setPasscode(_ passcode: String) throws {
         guard !passcode.isEmpty else { throw PasscodeError.empty }
-        rawRecord = PasscodeHasher.makeRecord(passcode)
+        rawRecord = try PasscodeHasher.makeRecord(passcode)
     }
 
     public func verify(_ passcode: String) -> Bool {
@@ -108,13 +112,28 @@ public final class KeychainPasscodeStore: PasscodeStoring {
 
     public func setPasscode(_ passcode: String) throws {
         guard !passcode.isEmpty else { throw PasscodeError.empty }
-        let record = PasscodeHasher.makeRecord(passcode)
-        SecItemDelete(baseQuery as CFDictionary)
-        var query = baseQuery
-        query[kSecValueData as String] = record
-        query[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlocked
-        let status = SecItemAdd(query as CFDictionary, nil)
-        guard status == errSecSuccess else { throw PasscodeError.keychain(status) }
+        let record = try PasscodeHasher.makeRecord(passcode)
+
+        // Try to update the existing item first. If it doesn't exist, add it.
+        // This keeps the old passcode intact if the update fails.
+        let updateAttrs: [String: Any] = [
+            kSecValueData as String: record,
+            kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly
+        ]
+        let updateStatus = SecItemUpdate(baseQuery as CFDictionary, updateAttrs as CFDictionary)
+
+        if updateStatus == errSecSuccess {
+            return
+        } else if updateStatus == errSecItemNotFound {
+            // Item doesn't exist, add it.
+            var addQuery = baseQuery
+            addQuery[kSecValueData as String] = record
+            addQuery[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
+            let addStatus = SecItemAdd(addQuery as CFDictionary, nil)
+            guard addStatus == errSecSuccess else { throw PasscodeError.keychain(addStatus) }
+        } else {
+            throw PasscodeError.keychain(updateStatus)
+        }
     }
 
     public func verify(_ passcode: String) -> Bool {
