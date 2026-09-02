@@ -44,7 +44,7 @@ PLIST
 # be signed inside-out before the bundle itself.
 # The hardened runtime blocks camera access outright unless the app carries this
 # entitlement -- the permission prompt never even appears without it.
-ENTITLEMENTS="$(mktemp -t laptopalarm-entitlements).plist"
+ENTITLEMENTS="$(mktemp -t laptopalarm-entitlements.plist)"
 cat > "${ENTITLEMENTS}" <<'ENT'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -57,7 +57,11 @@ ENT
 trap 'rm -f "${ENTITLEMENTS}"' EXIT
 
 IDENTITY="${LAPTOPALARM_SIGN_IDENTITY:-Apple Development: Jernej Jan Kocica (U2C2MA4YJZ)}"
-if security find-identity -v -p codesigning | grep -qF "${IDENTITY}"; then
+# Captured to a variable first: `grep -q` exits on its first match and can
+# SIGPIPE the producer, which under `set -o pipefail` fails the pipeline and
+# silently takes the ad-hoc branch even when the identity exists.
+IDENTITIES="$(security find-identity -v -p codesigning || true)"
+if printf '%s' "${IDENTITIES}" | grep -qF "${IDENTITY}"; then
     codesign --force --options runtime --entitlements "${ENTITLEMENTS}" \
              --sign "${IDENTITY}" "${APP_DIR}"
 else

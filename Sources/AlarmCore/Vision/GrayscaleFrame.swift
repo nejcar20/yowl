@@ -19,6 +19,18 @@ nonisolated public struct GrayscaleFrame: Equatable, Sendable {
         self.pixels = pixels
     }
 
+    /// A vertical slice, used to check that both halves of the frame agree on
+    /// the shift.
+    public func cropped(x: Int, width sliceWidth: Int) -> GrayscaleFrame? {
+        guard x >= 0, sliceWidth > 0, x + sliceWidth <= width else { return nil }
+        var slice = [UInt8](); slice.reserveCapacity(sliceWidth * height)
+        for row in 0..<height {
+            let start = row * width + x
+            slice.append(contentsOf: pixels[start..<(start + sliceWidth)])
+        }
+        return GrayscaleFrame(width: sliceWidth, height: height, pixels: slice)
+    }
+
     public var cgImage: CGImage? {
         guard pixels.count == width * height else { return nil }
         var data = pixels

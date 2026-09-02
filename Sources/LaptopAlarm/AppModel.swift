@@ -31,6 +31,8 @@ final class AppModel: ObservableObject {
     private let screenLock: ScreenLockResponse
     private let powerTrigger: PowerTrigger
     private let motionTrigger: MotionTrigger
+    /// One list so a per-trigger setting cannot reach some triggers and not others.
+    private var allTriggers: [any Trigger] { [powerTrigger, motionTrigger] }
     private let preferences: PreferenceStoring
     private var countdownTask: Task<Void, Never>?
 
@@ -171,11 +173,27 @@ final class AppModel: ObservableObject {
 
     func setMotionEnabled(_ enabled: Bool) {
         guard !settingsLocked else { return }
-        let applied = enabled && motionTrigger.isAvailable
-        motionTrigger.isEnabled = applied
-        preferences.setEnabled(applied, for: motionTrigger.identifier)
-        motionEnabled = motionTrigger.isActive
-        if !applied { stopCalibration() }
+        guard enabled else {
+            motionTrigger.isEnabled = false
+            preferences.setEnabled(false, for: motionTrigger.identifier)
+            motionEnabled = false
+            stopCalibration()
+            return
+        }
+        // Ask for camera access here, when the user switches the feature on,
+        // rather than letting them discover at arm time that it was never
+        // granted. Switching on a feature that cannot run is how "Armed" comes
+        // to mean nothing is watching.
+        Task { [weak self] in
+            guard let self else { return }
+            let granted = await self.motionTrigger.requestAccess()
+            let applied = granted && self.motionTrigger.isAvailable
+            self.motionTrigger.isEnabled = applied
+            self.preferences.setEnabled(applied, for: self.motionTrigger.identifier)
+            self.motionEnabled = self.motionTrigger.isActive
+            self.settingsMessage = applied ? nil
+                : "LaptopAlarm needs camera access for this. Grant it in System Settings ▸ Privacy & Security ▸ Camera."
+        }
     }
 
     /// The live score readout. Only runs while the settings pane asks for it,
@@ -193,6 +211,9 @@ final class AppModel: ObservableObject {
         }
     }
 
+    /// Also called when the settings UI disappears. A calibration session left
+    /// running keeps the green camera light on with nothing on screen
+    /// explaining why, which is the most trust-destroying thing this app can do.
     func stopCalibration() {
         guard isCalibrating else { return }
         motionTrigger.stopCalibration()
@@ -222,7 +243,11 @@ final class AppModel: ObservableObject {
         preferences.graceSeconds = seconds
         // Read back: the store clamps, so this is the value actually applied.
         let applied = preferences.graceSeconds
-        powerTrigger.graceSeconds = applied
+        // Every trigger, not just the charger. The motion trigger was
+        // constructed once at launch and never updated, so a user who set a
+        // 30s grace and armed in the same session got 0s on it -- an accidental
+        // nudge meant an instant siren with no window to stop it.
+        for trigger in allTriggers { trigger.graceSeconds = applied }
         graceSeconds = applied
     }
 
@@ -308,9 +333,16 @@ final class AppModel: ObservableObject {
             errorMessage = nil
             // Armed, but the Mac may sleep and stop noticing the charger. Not
             // an error: the alarm is still wired up.
-            warningMessage = engine.sleepAssertionFailed
-                ? "Armed, but macOS refused the keep-awake request. Keep the lid open — a sleeping Mac cannot hear the charger being pulled."
-                : nil
+            // Armed with less cover than the user asked for is a warning, not
+            // a failure: the triggers that did start are still watching.
+            var warnings: [String] = []
+            if engine.sleepAssertionFailed {
+                warnings.append("macOS refused the keep-awake request. Keep the lid open — a sleeping Mac cannot hear the charger being pulled.")
+            }
+            if engine.failedTriggers.contains("motion") {
+                warnings.append("The camera would not start, so movement is not being watched.")
+            }
+            warningMessage = warnings.isEmpty ? nil : "Armed, but: " + warnings.joined(separator: " ")
         } catch AlarmEngineError.noPasscodeSet {
             needsPasscodeSetup = true
             errorMessage = "Set a passcode before arming."

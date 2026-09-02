@@ -55,7 +55,8 @@ private func makeTrigger(_ source: FakeFrameSource,
     try trigger.start { _ in fireCount += 1 }
     source.emit(SyntheticFrames.scene())
     source.emit(SyntheticFrames.scene(dx: 12))
-    trigger.stop()
+    // Restart WITHOUT stopping: stop() also resets, so stopping first would let
+    // this pass even if start() never reset anything.
     try trigger.start { _ in fireCount += 1 }
     source.emit(SyntheticFrames.scene(dx: 24))
     #expect(fireCount == 0)
@@ -73,20 +74,34 @@ private func makeTrigger(_ source: FakeFrameSource,
 
 // Calibration and arming both hold the camera; a calibration session left
 // running would hold it open while the alarm needs it.
-@Test func calibrationDeliversScoresWithoutFiringTheAlarm() throws {
+@Test func calibrationDeliversScores() throws {
     let source = FakeFrameSource()
     let trigger = makeTrigger(source)
-    var fired = false
     var scores: [MotionScore] = []
-    try trigger.start { _ in fired = true }
-    trigger.stop()
-
     try trigger.startCalibration { scores.append($0) }
     for dx in stride(from: CGFloat(0), through: 48, by: 12) {
         source.emit(SyntheticFrames.scene(dx: dx))
     }
     #expect(scores.count >= 3)
-    #expect(fired == false)
+}
+
+// Calibrating while armed would silently replace the firing handler and turn
+// the alarm off with no error and no state change. The previous version of this
+// test called stop() first, which set the handler to nil and made "did not
+// fire" true for free.
+@Test func calibrationIsRefusedWhileArmed() throws {
+    let source = FakeFrameSource()
+    let trigger = makeTrigger(source)
+    var fired = false
+    try trigger.start { _ in fired = true }
+    #expect(throws: MotionTriggerError.armed) {
+        try trigger.startCalibration { _ in }
+    }
+    // The alarm still works: calibration did not steal the handler.
+    for dx in stride(from: CGFloat(0), through: 48, by: 12) {
+        source.emit(SyntheticFrames.scene(dx: dx))
+    }
+    #expect(fired == true)
 }
 
 @Test func stoppingCalibrationReleasesTheCamera() throws {

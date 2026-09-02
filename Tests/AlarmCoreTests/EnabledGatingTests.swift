@@ -112,3 +112,25 @@ private func makeEngine(triggers: [any Trigger], responses: [any Response],
     trigger.isEnabled = true
     #expect(trigger.isActive == false)
 }
+
+// Phase 1's only trigger could not fail to start, so the engine swallowed the
+// error. The camera trigger genuinely can fail, and counting a trigger that
+// never started would make "Armed" mean nothing is watching.
+@Test func armingFailsWhenNoEnabledTriggerCanStart() {
+    let failing = ThrowingTrigger(id: TriggerID("motion"))
+    let sleep = FakeSleepAssertion()
+    let engine = makeEngine(triggers: [failing], responses: [], sleep: sleep)
+    #expect(throws: AlarmEngineError.noArmableTrigger) { try engine.arm() }
+    #expect(engine.state == .disarmed)
+    #expect(sleep.isHeld == false)
+}
+
+@Test func armingSucceedsWhenAtLeastOneTriggerStarts() throws {
+    let failing = ThrowingTrigger(id: TriggerID("motion"))
+    let working = FakeTrigger(id: TriggerID("power"))
+    let engine = makeEngine(triggers: [failing, working], responses: [])
+    try engine.arm()
+    #expect(engine.state == .armed)
+    #expect(engine.failedTriggers == ["motion"])
+}
+

@@ -117,5 +117,11 @@ struct SettingsSection: View {
             .disabled(model.settingsLocked)
         }
         .font(.callout)
+        // The popover closing or the group collapsing must release the camera:
+        // otherwise the light stays on with no visible reason.
+        .onDisappear { model.stopCalibration() }
+        .onChange(of: expanded) { _, isExpanded in
+            if !isExpanded { model.stopCalibration() }
+        }
     }
 }

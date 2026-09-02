@@ -59,4 +59,24 @@ public final class FakeResponse: Response {
 
     public func reset() async { resetCount += 1 }
 }
+
+
+/// A trigger whose `start` always fails, for the case Phase 1 never had: a
+/// trigger that genuinely cannot begin watching.
+public final class ThrowingTrigger: Trigger {
+    public let id: TriggerID
+    public var identifier: String { id.rawValue }
+    public let isAvailable = true
+    public var isEnabled = true
+    public var graceSeconds: TimeInterval = 0
+    public var canFireNow: Bool { true }
+
+    public init(id: TriggerID) { self.id = id }
+
+    public func start(onFire: @escaping (TriggerID) -> Void) throws {
+        throw FrameSourceError.cameraUnavailable
+    }
+
+    public func stop() {}
+}
 #endif  // DEBUG

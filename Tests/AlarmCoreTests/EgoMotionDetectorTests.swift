@@ -26,11 +26,16 @@ private let detector = { EgoMotionDetector() }
     #expect((score?.shift ?? 0) > 20, "expected a large spurious shift; if this is small the fixture is not exercising the real failure mode")
 }
 
-@Test func aGlobalLightingChangeScoresZero() {
+// Asserts on `explained`, not just `value`: with shift ~0 the value is zero
+// whatever `explained` does, so a value-only assertion passes even with the
+// discriminator deleted and proves nothing.
+@Test func aGlobalLightingChangeIsNotExplainedByAnyShift() {
     let d = detector()
     let score = try? #require(d.score(previous: SyntheticFrames.scene(),
                                       current: SyntheticFrames.scene(brightness: 0.18)))
     #expect(abs(score?.value ?? 1) < 0.001)
+    #expect((score?.explained ?? 1) <= 0.01,
+            "a uniform brightness change is not a translation and no warp should explain it")
 }
 
 @Test func identicalFramesScoreZero() {
@@ -41,11 +46,13 @@ private let detector = { EgoMotionDetector() }
 }
 
 // A small real movement must still register: someone nudging the laptop.
-@Test func aSmallCameraMovementStillScoresPositive() {
+// `> 0` would pass at 1e-9, i.e. for a score that could never fire. The margin
+// is the point: a 3px nudge must clear the firing threshold.
+@Test func aSmallCameraMovementClearsTheFiringThreshold() {
     let d = detector()
     let score = try? #require(d.score(previous: SyntheticFrames.scene(),
                                       current: SyntheticFrames.scene(dx: 3)))
-    #expect((score?.value ?? 0) > 0)
+    #expect((score?.value ?? 0) > d.threshold)
 }
 
 // Single-frame noise must not fire the alarm; K consecutive frames must.

@@ -24,6 +24,47 @@ enum SyntheticFrames {
         }
     }
 
+    /// A periodic scene: window blinds, tiled floor, brick, a radiator, a
+    /// slatted chair back. Registration is ambiguous on these — a stripe at
+    /// offset N matches the stripe at N+period — so they are where the detector
+    /// is most likely to mistake a passer-by for the laptop being moved. The
+    /// primary deployment environment is full of them.
+    static func stripes(dx: CGFloat = 0, occluderAt: CGFloat? = nil,
+                        period: CGFloat = 16) -> GrayscaleFrame {
+        var pixels = [UInt8](repeating: 0, count: width * height)
+        pixels.withUnsafeMutableBytes { raw in
+            guard let ctx = CGContext(data: raw.baseAddress, width: width, height: height,
+                                      bitsPerComponent: 8, bytesPerRow: width,
+                                      space: CGColorSpaceCreateDeviceGray(),
+                                      bitmapInfo: CGImageAlphaInfo.none.rawValue) else { return }
+            ctx.setFillColor(gray: 0.15, alpha: 1)
+            ctx.fill(CGRect(x: 0, y: 0, width: width, height: height))
+            ctx.setFillColor(gray: 0.85, alpha: 1)
+            for x in stride(from: -period, to: CGFloat(width) + period, by: period * 2) {
+                ctx.fill(CGRect(x: x + dx, y: 0, width: period, height: CGFloat(height)))
+            }
+            if let ox = occluderAt {
+                ctx.setFillColor(gray: 0.5, alpha: 1)
+                ctx.fill(CGRect(x: ox, y: 0, width: 70, height: CGFloat(height)))
+            }
+        }
+        return GrayscaleFrame(width: width, height: height, pixels: pixels)
+    }
+
+    /// A dim or featureless scene: a dark room, the lid part-closed, the camera
+    /// facing a plain surface. Registration returns garbage on these, and any
+    /// residual is averaged over almost nothing.
+    static func flat(gray: Double = 0.03, noise: Int = 2, seed: UInt64 = 7) -> GrayscaleFrame {
+        var state = seed
+        let base = Int(gray * 255)
+        let pixels = (0..<(width * height)).map { _ -> UInt8 in
+            state = state &* 6364136223846793005 &+ 1442695040888963407
+            let jitter = Int((state >> 33) % UInt64(noise * 2 + 1)) - noise
+            return UInt8(max(0, min(255, base + jitter)))
+        }
+        return GrayscaleFrame(width: width, height: height, pixels: pixels)
+    }
+
     /// `dx`/`dy` move the whole scene (the camera moved).
     /// `occluderAt` moves a foreground bar only (a person walked past).
     /// `brightness` shifts every pixel (the lighting changed).

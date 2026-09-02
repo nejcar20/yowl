@@ -2,6 +2,7 @@
 import Foundation
 import AVFoundation
 import CoreVideo
+import os
 
 public enum FrameSourceError: Error, Equatable {
     case cameraUnavailable
@@ -10,6 +11,10 @@ public enum FrameSourceError: Error, Equatable {
 
 public protocol FrameSourcing: AnyObject {
     var isAvailable: Bool { get }
+    /// Prompts for access if the user has not been asked yet. Returns whether
+    /// capture is permitted. Called when the feature is switched on, so the
+    /// answer is known before anything depends on it.
+    func requestAccess() async -> Bool
     /// Replaces any existing handler. Restarting must never stack handlers.
     func start(onFrame: @escaping (GrayscaleFrame) -> Void) throws
     func stop()
@@ -21,19 +26,43 @@ public protocol FrameSourcing: AnyObject {
 /// opt-in rather than on by default.
 public final class CameraFrameSource: NSObject, FrameSourcing,
                                       AVCaptureVideoDataOutputSampleBufferDelegate {
-    public let targetWidth = 320
-    public let targetHeight = 240
+    /// Read from the capture queue, so these must not be main-actor isolated.
+    public nonisolated let targetWidth = 320
+    public nonisolated let targetHeight = 240
 
     private let session = AVCaptureSession()
     private let output = AVCaptureVideoDataOutput()
     private let queue = DispatchQueue(label: "com.jernejkocica.laptopalarm.frames")
+    private let framesPerSecond: Double
+
+    /// Everything the capture callback touches. The callback runs on the
+    /// capture queue, never the main actor, so it cannot legally read
+    /// main-actor state — an earlier version had no `nonisolated` on the
+    /// callback at all, which made Swift 6 insert an isolation check that
+    /// aborts the process on the first real frame. A lock rather than a
+    /// suppression: this state genuinely is shared across threads, and saying
+    /// so is the point.
+    private struct CaptureState {
+        var lastDelivery = Date.distantPast
+        var isRunning = false
+    }
+    private let captureState = OSAllocatedUnfairLock(initialState: CaptureState())
+    private nonisolated let minimumInterval: TimeInterval
+    /// Stays main-actor isolated: only the frame crosses threads, never this.
     private var onFrame: ((GrayscaleFrame) -> Void)?
-    private var lastDelivery = Date.distantPast
-    private let minimumInterval: TimeInterval
 
     public init(framesPerSecond: Double = 5) {
+        self.framesPerSecond = max(1, framesPerSecond)
         self.minimumInterval = 1.0 / max(1, framesPerSecond)
         super.init()
+    }
+
+    public func requestAccess() async -> Bool {
+        switch AVCaptureDevice.authorizationStatus(for: .video) {
+        case .authorized: return true
+        case .notDetermined: return await AVCaptureDevice.requestAccess(for: .video)
+        default: return false
+        }
     }
 
     public var isAvailable: Bool {
@@ -51,6 +80,7 @@ public final class CameraFrameSource: NSObject, FrameSourcing,
             throw FrameSourceError.accessDenied
         }
         self.onFrame = onFrame
+        captureState.withLock { $0 = CaptureState(lastDelivery: .distantPast, isRunning: true) }
 
         session.beginConfiguration()
         session.sessionPreset = .low
@@ -72,27 +102,42 @@ public final class CameraFrameSource: NSObject, FrameSourcing,
     public func stop() {
         if session.isRunning { session.stopRunning() }
         output.setSampleBufferDelegate(nil, queue: nil)
+        // Inputs and outputs are removed inside one configuration transaction;
+        // removing them individually makes each its own reconfiguration.
+        session.beginConfiguration()
         session.inputs.forEach { session.removeInput($0) }
         session.outputs.forEach { session.removeOutput($0) }
+        session.commitConfiguration()
+        captureState.withLock { $0.isRunning = false }
         onFrame = nil
     }
 
     isolated deinit { stop() }
 
-    public func captureOutput(_ output: AVCaptureOutput,
-                              didOutput sampleBuffer: CMSampleBuffer,
-                              from connection: AVCaptureConnection) {
+    /// MUST be `nonisolated`. AVFoundation invokes this on `queue` via ObjC;
+    /// without it the package's main-actor default makes Swift 6 insert an
+    /// isolation assertion that aborts the process on the very first frame —
+    /// invisible to tests, which drive the fake on the main actor.
+    public nonisolated func captureOutput(_ output: AVCaptureOutput,
+                                          didOutput sampleBuffer: CMSampleBuffer,
+                                          from connection: AVCaptureConnection) {
         // Throttle here rather than asking the device for a low frame rate:
         // registration is the cost, not capture, and this keeps the pacing in
         // one place regardless of what the hardware offers.
         let now = Date()
-        guard now.timeIntervalSince(lastDelivery) >= minimumInterval else { return }
-        lastDelivery = now
+        let shouldDeliver = captureState.withLock { state -> Bool in
+            guard state.isRunning,
+                  now.timeIntervalSince(state.lastDelivery) >= minimumInterval
+            else { return false }
+            state.lastDelivery = now
+            return true
+        }
+        guard shouldDeliver else { return }
         guard let frame = Self.grayscaleFrame(from: sampleBuffer,
                                               width: targetWidth, height: targetHeight)
         else { return }
-        // The capture queue is not the main actor; hop before touching the
-        // handler, which owns main-actor state.
+        // Only `frame` crosses the thread boundary; the handler is read on the
+        // main actor, where it lives.
         Task { @MainActor [weak self] in self?.onFrame?(frame) }
     }
 
@@ -129,7 +174,15 @@ public final class FakeFrameSource: FrameSourcing {
     public private(set) var startCallCount = 0
     private var onFrame: ((GrayscaleFrame) -> Void)?
 
+    public var accessGranted = true
+    public private(set) var requestAccessCallCount = 0
+
     public init(isAvailable: Bool = true) { self.isAvailable = isAvailable }
+
+    public func requestAccess() async -> Bool {
+        requestAccessCallCount += 1
+        return accessGranted
+    }
 
     public func start(onFrame: @escaping (GrayscaleFrame) -> Void) throws {
         guard isAvailable else { throw FrameSourceError.cameraUnavailable }
