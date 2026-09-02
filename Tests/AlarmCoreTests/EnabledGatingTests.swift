@@ -74,8 +74,8 @@ private func makeEngine(triggers: [any Trigger], responses: [any Response],
     #expect(power.isStarted == true)
 }
 
-// A response the user disabled before arming must not fire even if they
-// re-enable it mid-alarm; but a response enabled at fire time must fire.
+// Enablement is read at fire time, not captured at arm time: a response
+// re-enabled between arming and firing does fire.
 @Test func responseEnablementIsReadAtFireTime() async throws {
     let trigger = FakeTrigger(id: TriggerID("power"))
     let siren = FakeResponse(identifier: "siren")
@@ -86,4 +86,29 @@ private func makeEngine(triggers: [any Trigger], responses: [any Response],
     trigger.simulateFire()
     await Task.yield(); await Task.yield()
     #expect(siren.fireCount == 1)
+}
+
+// isActive is the single place the two axes combine. Every call site uses it,
+// so an unavailable feature can never be switched on by a stored preference —
+// which is what keeps a sandboxed build honest about what it dropped.
+@Test func anUnavailableFeatureIsNeverActiveEvenWhenEnabled() {
+    let response = FakeResponse(identifier: "screen-lock", isAvailable: false)
+    response.isEnabled = true
+    #expect(response.isActive == false)
+}
+
+@Test func anAvailableButDisabledFeatureIsNotActive() {
+    let response = FakeResponse(identifier: "siren", isAvailable: true)
+    response.isEnabled = false
+    #expect(response.isActive == false)
+}
+
+@Test func anAvailableAndEnabledFeatureIsActive() {
+    #expect(FakeResponse(identifier: "siren", isAvailable: true).isActive == true)
+}
+
+@Test func anUnavailableTriggerCannotBeArmedByEnablingIt() {
+    let trigger = FakeTrigger(id: TriggerID("lid"), isAvailable: false)
+    trigger.isEnabled = true
+    #expect(trigger.isActive == false)
 }

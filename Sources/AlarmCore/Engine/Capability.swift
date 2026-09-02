@@ -15,6 +15,14 @@ public protocol Capability: AnyObject {
     var isEnabled: Bool { get set }
 }
 
+public extension Capability {
+    /// The only correct way to ask "will this actually run?". Combining the two
+    /// axes at each call site is how the UI came to claim a security feature was
+    /// on for a build that had already dropped it — so the combination lives
+    /// here, once, and callers use this rather than reimplementing it.
+    var isActive: Bool { isAvailable && isEnabled }
+}
+
 /// Context handed to every response when the alarm fires.
 public struct AlarmContext: Sendable, Equatable {
     public let trigger: TriggerID

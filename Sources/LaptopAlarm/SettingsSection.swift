@@ -22,12 +22,19 @@ struct SettingsSection: View {
 
                 Group {
                     Text("When the alarm fires").font(.caption).foregroundStyle(.secondary)
-                    Toggle("Sound the siren", isOn: Binding(
-                        get: { model.sirenEnabled },
-                        set: { model.setSirenEnabled($0) }))
-                    Toggle("Lock the screen", isOn: Binding(
-                        get: { model.screenLockEnabled },
-                        set: { model.setScreenLockEnabled($0) }))
+                    // Only features this build can actually run are offered.
+                    // An unavailable feature is absent, not shown-and-disabled,
+                    // so a sandboxed build never advertises what it dropped.
+                    if model.sirenAvailable {
+                        Toggle("Sound the siren", isOn: Binding(
+                            get: { model.sirenEnabled },
+                            set: { model.setSirenEnabled($0) }))
+                    }
+                    if model.screenLockAvailable {
+                        Toggle("Lock the screen", isOn: Binding(
+                            get: { model.screenLockEnabled },
+                            set: { model.setScreenLockEnabled($0) }))
+                    }
                 }
 
                 Divider()

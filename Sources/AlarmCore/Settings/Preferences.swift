@@ -13,7 +13,6 @@ public protocol PreferenceStoring: AnyObject {
     func isEnabled(_ identifier: String) -> Bool
     func setEnabled(_ enabled: Bool, for identifier: String)
     var graceSeconds: TimeInterval { get set }
-    var launchAtLogin: Bool { get set }
 }
 
 public enum GraceLimits {
@@ -33,7 +32,6 @@ public final class UserDefaultsPreferences: PreferenceStoring {
     private enum Key {
         static func enabled(_ identifier: String) -> String { "enabled.\(identifier)" }
         static let grace = "graceSeconds"
-        static let launchAtLogin = "launchAtLogin"
     }
 
     public init(defaults: UserDefaults = .standard) { self.defaults = defaults }
@@ -55,17 +53,12 @@ public final class UserDefaultsPreferences: PreferenceStoring {
         set { defaults.set(GraceLimits.clamp(newValue), forKey: Key.grace) }
     }
 
-    public var launchAtLogin: Bool {
-        get { defaults.object(forKey: Key.launchAtLogin) as? Bool ?? false }
-        set { defaults.set(newValue, forKey: Key.launchAtLogin) }
-    }
 }
 
 #if DEBUG
 public final class InMemoryPreferences: PreferenceStoring {
     private var enabled: [String: Bool] = [:]
     private var storedGrace = GraceLimits.defaultValue
-    public var launchAtLogin = false
 
     public init() {}
 

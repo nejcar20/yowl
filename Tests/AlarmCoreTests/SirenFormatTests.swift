@@ -8,12 +8,23 @@ import AVFoundation
 // mixer with `format: nil`, which adopted the mixer's rate (44100). The tone
 // came out ~9% off pitch. The rate the oscillator uses and the rate the
 // connection declares must be the same number, by construction.
-@Test func theOscillatorRateMatchesTheDeclaredFormatRate() {
+// Exercises the real engine. Reverting to `AVAudioSourceNode(renderBlock:)`
+// plus `connect(..., format: nil)` makes this fail: the node connects at the
+// mixer's rate while the oscillator runs at the output device's rate.
+@Test func theRunningGraphConnectsAtTheRateTheOscillatorGeneratesAt() {
+    let player = AVSirenPlayer()
+    #expect(player.start() == true)
+    defer { player.stop() }
+    let connected = try? #require(player.connectedSampleRate)
+    let oscillator = try? #require(player.oscillatorSampleRate)
+    #expect(connected == oscillator,
+            "graph connected at \(String(describing: connected)) but the oscillator generates at \(String(describing: oscillator)) — the siren would play off pitch")
+}
+
+@Test func rateAndFormatAgreeAcrossHardwareRates() {
     for hardware in [44_100.0, 48_000.0, 96_000.0] {
-        let rate = AVSirenPlayer.renderSampleRate(hardware: hardware)
-        let format = AVSirenPlayer.renderFormat(hardware: hardware)
-        #expect(format?.sampleRate == rate,
-                "oscillator would run at \(rate) while the connection declares \(String(describing: format?.sampleRate))")
+        #expect(AVSirenPlayer.renderFormat(hardware: hardware)?.sampleRate
+                == AVSirenPlayer.renderSampleRate(hardware: hardware))
     }
 }
 

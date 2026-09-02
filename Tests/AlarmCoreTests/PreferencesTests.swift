@@ -41,14 +41,3 @@ import Foundation
     prefs.graceSeconds = 999
     #expect(prefs.graceSeconds == 60)
 }
-
-// Registering a login item without being asked is rude.
-@Test func launchAtLoginDefaultsToOff() {
-    #expect(InMemoryPreferences().launchAtLogin == false)
-}
-
-@Test func launchAtLoginRoundTrips() {
-    let prefs = InMemoryPreferences()
-    prefs.launchAtLogin = true
-    #expect(prefs.launchAtLogin == true)
-}

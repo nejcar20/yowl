@@ -27,10 +27,14 @@ public final class AVSirenPlayer: SirenPlaying {
     /// Owned and mutated only by the render block; allocated in start(), deallocated in stop()
     private var oscillatorState: UnsafeMutablePointer<OscillatorState>?
     public private(set) var isPlaying = false
+    /// The sample rate the audio graph actually connected at, and the rate the
+    /// oscillator is generating at. These must be equal; when they were not,
+    /// the siren played about 9% off pitch. Exposed so a test can prove it.
+    public private(set) var connectedSampleRate: Double?
+    public private(set) var oscillatorSampleRate: Double?
 
     public init() {}
 
-    @discardableResult
     /// The sample rate the oscillator runs at. An engine that has never been
     /// started can report 0 for its output format, hence the fallback.
     public static func renderSampleRate(hardware: Double) -> Double {
@@ -44,6 +48,7 @@ public final class AVSirenPlayer: SirenPlaying {
                       channels: 2)
     }
 
+    @discardableResult
     public func start() -> Bool {
         guard !isPlaying else { return true }
 
@@ -78,6 +83,8 @@ public final class AVSirenPlayer: SirenPlaying {
         engine.mainMixerNode.outputVolume = 1.0
         do {
             try engine.start()
+            connectedSampleRate = node.outputFormat(forBus: 0).sampleRate
+            oscillatorSampleRate = state.pointee.sampleRate
             isPlaying = true
             return true
         } catch {
@@ -136,6 +143,8 @@ public final class AVSirenPlayer: SirenPlaying {
         guard isPlaying else { return }
         // Stop engine and detach node first, so the render block cannot run again.
         engine.stop()
+        connectedSampleRate = nil
+        oscillatorSampleRate = nil
         if let sourceNode { engine.detach(sourceNode) }
         sourceNode = nil
 

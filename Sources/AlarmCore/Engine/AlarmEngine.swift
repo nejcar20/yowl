@@ -66,7 +66,7 @@ public final class AlarmEngine {
         // `isAvailable`, which is a fixed property of the build and filtered
         // once at construction. A trigger counts only if the user wants it on
         // AND it has something left to detect.
-        let armable = triggers.filter { $0.isEnabled && $0.canFireNow }
+        let armable = triggers.filter { $0.isActive && $0.canFireNow }
         guard !armable.isEmpty else {
             throw AlarmEngineError.noArmableTrigger
         }
@@ -141,7 +141,7 @@ public final class AlarmEngine {
             // siren *after* the reset -- state .disarmed, savedState cleared,
             // UI showing "Arm", and a screaming machine with no way to stop it.
             guard case .firing = state else { return }
-            for response in responses where response.isEnabled {
+            for response in responses where response.isActive {
                 await response.fire(context: context)
             }
             onResponsesFired?()

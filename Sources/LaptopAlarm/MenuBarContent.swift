@@ -37,7 +37,7 @@ struct MenuBarContent: View {
             }
 
             Divider()
-            // Quit is a kill switch: during the 10-second grace the screen is
+            // Quit is a kill switch: during any grace window the screen is
             // not locked yet, so a thief who recognises the app could otherwise
             // click Quit and end the alarm without ever meeting the passcode.
             // The passcode gates disarm; it must gate quit too.

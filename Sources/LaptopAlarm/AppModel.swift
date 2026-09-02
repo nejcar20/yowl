@@ -77,8 +77,8 @@ final class AppModel: ObservableObject {
         siren.isEnabled = siren.isAvailable && preferences.isEnabled(siren.identifier)
         lock.isEnabled = lock.isAvailable && preferences.isEnabled(lock.identifier)
         trigger.isEnabled = trigger.isAvailable && preferences.isEnabled(trigger.identifier)
-        sirenEnabled = siren.isEnabled
-        screenLockEnabled = lock.isEnabled
+        sirenEnabled = siren.isActive
+        screenLockEnabled = lock.isActive
         graceSeconds = preferences.graceSeconds
         launchAtLogin = Self.loginItemIsRegistered()
     }
@@ -103,7 +103,11 @@ final class AppModel: ObservableObject {
             while !Task.isCancelled {
                 try? await Task.sleep(for: .milliseconds(250))
                 guard let self, case let .grace(deadline, _) = self.state else { return }
-                self.graceRemaining = Self.secondsRemaining(until: deadline)
+                let remaining = Self.secondsRemaining(until: deadline)
+                // Publish only on change: the loop ticks 4x/s for a value that
+                // changes 1x/s, and every publish re-renders the popover
+                // including the focused disarm field.
+                if remaining != self.graceRemaining { self.graceRemaining = remaining }
             }
         }
     }
@@ -123,26 +127,40 @@ final class AppModel: ObservableObject {
     /// A response the user can switch off. Only the siren and the screen lock
     /// today; trigger toggles stay hidden until a second trigger exists, since
     /// unchecking the only one just makes arming refuse.
+    /// Every setter clamps against `isAvailable`. Without the clamp the UI can
+    /// claim a security feature is on while the engine has already dropped it —
+    /// exactly the lie the two-axis design exists to prevent.
     func setSirenEnabled(_ enabled: Bool) {
         guard !settingsLocked else { return }
-        siren.isEnabled = enabled
-        preferences.setEnabled(enabled, for: siren.identifier)
-        sirenEnabled = enabled
+        let applied = enabled && siren.isAvailable
+        siren.isEnabled = applied
+        preferences.setEnabled(applied, for: siren.identifier)
+        sirenEnabled = siren.isActive
         warnIfNoResponsesLeft()
     }
 
     func setScreenLockEnabled(_ enabled: Bool) {
         guard !settingsLocked else { return }
-        screenLock.isEnabled = enabled
-        preferences.setEnabled(enabled, for: screenLock.identifier)
-        screenLockEnabled = enabled
+        let applied = enabled && screenLock.isAvailable
+        screenLock.isEnabled = applied
+        preferences.setEnabled(applied, for: screenLock.identifier)
+        screenLockEnabled = screenLock.isActive
         warnIfNoResponsesLeft()
     }
 
+    var sirenAvailable: Bool { siren.isAvailable }
+    var screenLockAvailable: Bool { screenLock.isAvailable }
+
+    /// Reads the live objects, not the UI mirrors: a mirror can say "on" for a
+    /// response the engine dropped, which is precisely when this warning matters.
     private func warnIfNoResponsesLeft() {
-        settingsMessage = (!sirenEnabled && !screenLockEnabled)
-            ? "Nothing will happen when the alarm fires. It will still detect the theft — it just won't react."
-            : nil
+        let nothingWillHappen = !siren.isActive && !screenLock.isActive
+        if nothingWillHappen {
+            settingsMessage = "Nothing will happen when the alarm fires. It will still detect the theft — it just won't react."
+        } else if settingsMessage?.hasPrefix("Nothing will happen") == true {
+            // Only clear our own message; don't clobber "Passcode changed."
+            settingsMessage = nil
+        }
     }
 
     func setGraceSeconds(_ seconds: TimeInterval) {
@@ -164,7 +182,14 @@ final class AppModel: ObservableObject {
             if enabled { try SMAppService.mainApp.register() }
             else { try SMAppService.mainApp.unregister() }
             launchAtLogin = Self.loginItemIsRegistered()
-            settingsMessage = nil
+            // register() commonly lands in .requiresApproval rather than
+            // .enabled. Reporting that as plain failure would snap the toggle
+            // back with no explanation, and the user would reasonably conclude
+            // the app is broken — or worse, think they are protected at every
+            // login when they are not.
+            settingsMessage = SMAppService.mainApp.status == .requiresApproval
+                ? "Approve LaptopAlarm in System Settings ▸ General ▸ Login Items to start it at login."
+                : nil
         } catch {
             launchAtLogin = Self.loginItemIsRegistered()
             settingsMessage = "Could not change the login item. Run the app from /Applications and try again."
@@ -172,7 +197,8 @@ final class AppModel: ObservableObject {
     }
 
     private static func loginItemIsRegistered() -> Bool {
-        SMAppService.mainApp.status == .enabled
+        let status = SMAppService.mainApp.status
+        return status == .enabled || status == .requiresApproval
     }
 
     func changePasscode(current: String, new: String) {
@@ -193,7 +219,12 @@ final class AppModel: ObservableObject {
     var isArmed: Bool { state != .disarmed }
     var isFiring: Bool { if case .firing = state { return true }; return false }
 
+    /// First-run only. Guarded because an unguarded overwrite is a disarm
+    /// bypass: set a new passcode mid-alarm, then use it to stop the siren
+    /// without ever knowing the old one. Changing an existing passcode goes
+    /// through `changePasscode`, which demands the current one.
     func setPasscode(_ passcode: String) {
+        guard !settingsLocked, !passcodes.hasPasscode else { return }
         do {
             try passcodes.setPasscode(passcode)
             needsPasscodeSetup = false
@@ -249,6 +280,8 @@ final class AppModel: ObservableObject {
     /// Reuses `SirenResponse`'s single restore path rather than duplicating it.
     /// This also silences the siren, which is correct: the process is dying
     /// either way, and vandalised audio settings would outlive it.
+    deinit { countdownTask?.cancel() }
+
     func restoreAudioBeforeTermination() {
         siren.restoreAudioAndSilence()
     }

@@ -131,10 +131,21 @@ Targets: LaptopAlarm (Developer ID) | LaptopAlarm-MAS (sandboxed)
 `armed -> [trigger fires] -> grace(N seconds) -> firing`
 `firing -> [disarm] -> disarmed`
 
-Grace period is per-trigger and user-configurable. Defaults: **10 s** for charger
-unplug (commonly accidental), **0 s** for motion and lid (rarely accidental once
-calibrated). During `grace` the app shows a countdown and plays a soft warning
-tone; disarming cancels it.
+Grace period is per-trigger and user-configurable (0-60 s). The default is
+**0 s** for every trigger: "Armed" should mean the siren fires the instant the
+condition is met, leaving no window in which a thief who recognises the app can
+quit it.
+
+This overrides an earlier 10 s default for charger unplug, whose rationale was
+that unplugging is commonly accidental. That rationale still holds, and the
+consequence is now explicit: with 0 s an accidental unplug means siren plus a
+locked screen with no window to prevent it. Users who want the margin raise the
+slider.
+
+During `grace` the app shows a live countdown. This is not decoration: a silent
+grace window is indistinguishable from a broken alarm, and was misread as one in
+testing. No warning tone is played -- a tone during grace would be a second,
+quieter alarm, which is confusing rather than helpful.
 
 ## 5. Distribution matrix
 
