@@ -29,6 +29,11 @@ public protocol AudioOutputControlling: AnyObject {
 /// Real CoreAudio implementation. Verified 2026-09-02: the built-in output
 /// reports transport type `bltn` and exposes a settable main-element volume.
 public final class CoreAudioOutputControl: AudioOutputControlling {
+    // Stereo channel range for devices without main-element volume.
+    // Used by both read (allChannelVolumes) and write (setVolume) paths
+    // to ensure symmetry. Assumes built-in speakers are stereo.
+    private let stereoChannelRange: ClosedRange<UInt32> = 1...2
+
     public init() {}
 
     private func address(_ selector: AudioObjectPropertySelector,
@@ -38,14 +43,14 @@ public final class CoreAudioOutputControl: AudioOutputControlling {
                                    mElement: kAudioObjectPropertyElementMain)
     }
 
-    private func defaultOutputDevice() -> AudioDeviceID? {
+    private func defaultOutputDevice() -> (device: AudioDeviceID?, status: OSStatus) {
         var addr = address(kAudioHardwarePropertyDefaultOutputDevice,
                            kAudioObjectPropertyScopeGlobal)
         var device = AudioDeviceID(0)
         var size = UInt32(MemoryLayout<AudioDeviceID>.size)
         let status = AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject),
                                                 &addr, 0, nil, &size, &device)
-        return status == noErr ? device : nil
+        return (status == noErr ? device : nil, status)
     }
 
     private func volume(of device: AudioDeviceID) -> Float {
@@ -80,7 +85,7 @@ public final class CoreAudioOutputControl: AudioOutputControlling {
     /// Empty if main element was used or no channels have volume.
     private func allChannelVolumes(of device: AudioDeviceID) -> [UInt32: Float] {
         var channels: [UInt32: Float] = [:]
-        for channel in UInt32(1)...UInt32(2) {
+        for channel in stereoChannelRange {
             var addr = AudioObjectPropertyAddress(
                 mSelector: kAudioDevicePropertyVolumeScalar,
                 mScope: kAudioObjectPropertyScopeOutput,
@@ -112,7 +117,7 @@ public final class CoreAudioOutputControl: AudioOutputControlling {
         // Success if at least one channel accepted the write.
         var anyChannelSucceeded = false
         var lastStatus: OSStatus = OSStatus(paramErr)
-        for channel in UInt32(1)...UInt32(2) {
+        for channel in stereoChannelRange {
             var addr = AudioObjectPropertyAddress(
                 mSelector: kAudioDevicePropertyVolumeScalar,
                 mScope: kAudioObjectPropertyScopeOutput,
@@ -191,7 +196,8 @@ public final class CoreAudioOutputControl: AudioOutputControlling {
     }
 
     public func currentState() -> AudioOutputState {
-        guard let device = defaultOutputDevice() else {
+        let (device, _) = defaultOutputDevice()
+        guard let device = device else {
             return AudioOutputState(deviceID: 0, volume: 0, muted: false)
         }
         let vol = volume(of: device)
@@ -209,11 +215,13 @@ public final class CoreAudioOutputControl: AudioOutputControlling {
     }
 
     public func forceMaxVolumeOnBuiltInSpeakers() throws {
-        if let builtIn = builtInOutputDevice(), let current = defaultOutputDevice(), builtIn != current {
+        let (currentDevice, _) = defaultOutputDevice()
+        if let builtIn = builtInOutputDevice(), builtIn != currentDevice {
             _ = setDefaultOutputDevice(builtIn)
         }
-        guard let device = defaultOutputDevice() else {
-            throw AudioOutputError.propertyWriteFailed(selector: "kAudioHardwarePropertyDefaultOutputDevice", status: -1)
+        let (device, getDeviceStatus) = defaultOutputDevice()
+        guard let device = device else {
+            throw AudioOutputError.propertyWriteFailed(selector: "kAudioHardwarePropertyDefaultOutputDevice", status: getDeviceStatus)
         }
 
         let (muteSuccess, muteStatus) = setMuted(false, on: device)
