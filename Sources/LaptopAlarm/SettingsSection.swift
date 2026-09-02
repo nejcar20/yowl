@@ -20,6 +20,38 @@ struct SettingsSection: View {
                         .font(.caption).foregroundStyle(.secondary)
                 }
 
+                if model.motionAvailable {
+                    Group {
+                        Text("What triggers the alarm").font(.caption).foregroundStyle(.secondary)
+                        Text("Charger unplugged — always on")
+                            .font(.caption2).foregroundStyle(.secondary)
+                        Toggle("Laptop is moved (uses the camera)", isOn: Binding(
+                            get: { model.motionEnabled },
+                            set: { model.setMotionEnabled($0) }))
+                        Text("The camera light stays on while armed. Video never leaves your Mac and is never recorded.")
+                            .font(.caption2).foregroundStyle(.secondary)
+
+                        if model.motionEnabled {
+                            HStack {
+                                Button(model.isCalibrating ? "Stop test" : "Test sensitivity") {
+                                    if model.isCalibrating { model.stopCalibration() }
+                                    else { model.startCalibration() }
+                                }
+                                if let score = model.liveMotionScore {
+                                    Text(String(format: "%.4f", score))
+                                        .font(.caption.monospacedDigit())
+                                        .foregroundStyle(score > model.motionThreshold ? Color.red : Color.secondary)
+                                }
+                            }
+                            if model.isCalibrating {
+                                Text("Nudge the laptop: the number should jump. Wave a hand in front of it: the number should not.")
+                                    .font(.caption2).foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                    Divider()
+                }
+
                 Group {
                     Text("When the alarm fires").font(.caption).foregroundStyle(.secondary)
                     // Only features this build can actually run are offered.

@@ -21,12 +21,16 @@ final class AppModel: ObservableObject {
     @Published private(set) var graceSeconds: TimeInterval = GraceLimits.defaultValue
     @Published private(set) var launchAtLogin = false
     @Published private(set) var settingsMessage: String?
+    @Published private(set) var motionEnabled = false
+    @Published private(set) var liveMotionScore: Double?
+    @Published private(set) var isCalibrating = false
 
     private let engine: AlarmEngine
     private let passcodes: KeychainPasscodeStore
     private let siren: SirenResponse
     private let screenLock: ScreenLockResponse
     private let powerTrigger: PowerTrigger
+    private let motionTrigger: MotionTrigger
     private let preferences: PreferenceStoring
     private var countdownTask: Task<Void, Never>?
 
@@ -39,6 +43,10 @@ final class AppModel: ObservableObject {
         let trigger = PowerTrigger(monitor: IOKitPowerSourceMonitor(),
                                    graceSeconds: preferences.graceSeconds)
         self.powerTrigger = trigger
+        let motion = MotionTrigger(source: CameraFrameSource(framesPerSecond: 5),
+                                   detector: EgoMotionDetector(),
+                                   graceSeconds: preferences.graceSeconds)
+        self.motionTrigger = motion
         let siren = SirenResponse(player: AVSirenPlayer(),
                                   audio: CoreAudioOutputControl())
         self.siren = siren
@@ -49,7 +57,7 @@ final class AppModel: ObservableObject {
         let lock = ScreenLockResponse(locker: LoginFrameworkScreenLocker())
         self.screenLock = lock
 
-        engine = AlarmEngine(triggers: [trigger],
+        engine = AlarmEngine(triggers: [trigger, motion],
                              responses: [siren, lock],
                              clock: SystemClock(),
                              passcodes: passcodes,
@@ -77,6 +85,12 @@ final class AppModel: ObservableObject {
         siren.isEnabled = siren.isAvailable && preferences.isEnabled(siren.identifier)
         lock.isEnabled = lock.isAvailable && preferences.isEnabled(lock.identifier)
         trigger.isEnabled = trigger.isAvailable && preferences.isEnabled(trigger.identifier)
+        // Motion is the one feature that stays off until asked for: it holds
+        // the camera open, and the green light is hardware-enforced. Everything
+        // else defaults on; this one requires a deliberate decision.
+        motion.isEnabled = motion.isAvailable
+            && preferences.isEnabled(motion.identifier, default: false)
+        motionEnabled = motion.isActive
         sirenEnabled = siren.isActive
         screenLockEnabled = lock.isActive
         graceSeconds = preferences.graceSeconds
@@ -152,6 +166,41 @@ final class AppModel: ObservableObject {
         screenLockEnabled = screenLock.isActive
         warnIfNoResponsesLeft()
     }
+
+    var motionAvailable: Bool { motionTrigger.isAvailable }
+
+    func setMotionEnabled(_ enabled: Bool) {
+        guard !settingsLocked else { return }
+        let applied = enabled && motionTrigger.isAvailable
+        motionTrigger.isEnabled = applied
+        preferences.setEnabled(applied, for: motionTrigger.identifier)
+        motionEnabled = motionTrigger.isActive
+        if !applied { stopCalibration() }
+    }
+
+    /// The live score readout. Only runs while the settings pane asks for it,
+    /// so the camera light is never on without a visible reason.
+    func startCalibration() {
+        guard !settingsLocked, motionTrigger.isAvailable, !isCalibrating else { return }
+        do {
+            try motionTrigger.startCalibration { [weak self] score in
+                self?.liveMotionScore = score.value
+            }
+            isCalibrating = true
+            settingsMessage = nil
+        } catch {
+            settingsMessage = "Could not open the camera. Grant access in System Settings ▸ Privacy & Security ▸ Camera."
+        }
+    }
+
+    func stopCalibration() {
+        guard isCalibrating else { return }
+        motionTrigger.stopCalibration()
+        isCalibrating = false
+        liveMotionScore = nil
+    }
+
+    var motionThreshold: Double { motionTrigger.detector.threshold }
 
     var sirenAvailable: Bool { siren.isAvailable }
     var screenLockAvailable: Bool { screenLock.isAvailable }
@@ -251,6 +300,9 @@ final class AppModel: ObservableObject {
     }
 
     func arm() {
+        // The alarm needs exclusive use of the camera, and a calibration
+        // session left running would hold it open.
+        stopCalibration()
         do {
             try engine.arm()
             errorMessage = nil

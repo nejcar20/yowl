@@ -50,4 +50,21 @@ public final class MotionTrigger: Trigger {
         detector.reset()
         onFire = nil
     }
+
+    /// Runs the detector without arming the alarm, for the live sensitivity
+    /// readout. Thresholds correct at a kitchen table are wrong in a dim cafe,
+    /// so the user has to be able to watch the number at their actual table.
+    public func startCalibration(onScore: @escaping (MotionScore) -> Void) throws {
+        detector.reset()
+        try source.start { [weak self] frame in
+            guard let self else { return }
+            _ = self.detector.submit(frame)
+            if let score = self.detector.lastScore { onScore(score) }
+        }
+    }
+
+    public func stopCalibration() {
+        source.stop()
+        detector.reset()
+    }
 }

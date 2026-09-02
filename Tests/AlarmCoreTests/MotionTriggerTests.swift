@@ -70,3 +70,30 @@ private func makeTrigger(_ source: FakeFrameSource,
 @Test func theTriggerCanAlwaysFireNow() {
     #expect(makeTrigger(FakeFrameSource()).canFireNow == true)
 }
+
+// Calibration and arming both hold the camera; a calibration session left
+// running would hold it open while the alarm needs it.
+@Test func calibrationDeliversScoresWithoutFiringTheAlarm() throws {
+    let source = FakeFrameSource()
+    let trigger = makeTrigger(source)
+    var fired = false
+    var scores: [MotionScore] = []
+    try trigger.start { _ in fired = true }
+    trigger.stop()
+
+    try trigger.startCalibration { scores.append($0) }
+    for dx in stride(from: CGFloat(0), through: 48, by: 12) {
+        source.emit(SyntheticFrames.scene(dx: dx))
+    }
+    #expect(scores.count >= 3)
+    #expect(fired == false)
+}
+
+@Test func stoppingCalibrationReleasesTheCamera() throws {
+    let source = FakeFrameSource()
+    let trigger = makeTrigger(source)
+    try trigger.startCalibration { _ in }
+    #expect(source.isRunning == true)
+    trigger.stopCalibration()
+    #expect(source.isRunning == false)
+}

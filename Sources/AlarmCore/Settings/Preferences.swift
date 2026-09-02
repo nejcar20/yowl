@@ -8,11 +8,18 @@ import Foundation
 /// user must never be able to switch those on. `isEnabled` answers "does the
 /// user want this one active?" A feature runs only when both are true.
 public protocol PreferenceStoring: AnyObject {
-    /// Defaults to `true`: a user who never opens settings gets the most
-    /// protection, not the least.
-    func isEnabled(_ identifier: String) -> Bool
+    /// Most features default on: a user who never opens settings gets the most
+    /// protection, not the least. Motion is the exception and passes `false`,
+    /// because it holds the camera open.
+    func isEnabled(_ identifier: String, default defaultValue: Bool) -> Bool
     func setEnabled(_ enabled: Bool, for identifier: String)
     var graceSeconds: TimeInterval { get set }
+}
+
+public extension PreferenceStoring {
+    /// The common case, defined once on top of the defaulted form so the two
+    /// cannot drift apart.
+    func isEnabled(_ identifier: String) -> Bool { isEnabled(identifier, default: true) }
 }
 
 public enum GraceLimits {
@@ -36,8 +43,8 @@ public final class UserDefaultsPreferences: PreferenceStoring {
 
     public init(defaults: UserDefaults = .standard) { self.defaults = defaults }
 
-    public func isEnabled(_ identifier: String) -> Bool {
-        defaults.object(forKey: Key.enabled(identifier)) as? Bool ?? true
+    public func isEnabled(_ identifier: String, default defaultValue: Bool) -> Bool {
+        defaults.object(forKey: Key.enabled(identifier)) as? Bool ?? defaultValue
     }
 
     public func setEnabled(_ enabled: Bool, for identifier: String) {
@@ -62,7 +69,9 @@ public final class InMemoryPreferences: PreferenceStoring {
 
     public init() {}
 
-    public func isEnabled(_ identifier: String) -> Bool { enabled[identifier] ?? true }
+    public func isEnabled(_ identifier: String, default defaultValue: Bool) -> Bool {
+        enabled[identifier] ?? defaultValue
+    }
     public func setEnabled(_ enabled: Bool, for identifier: String) {
         self.enabled[identifier] = enabled
     }
