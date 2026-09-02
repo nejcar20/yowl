@@ -1,0 +1,53 @@
+import Testing
+import Foundation
+@testable import AlarmCore
+
+private let ctx = AlarmContext(trigger: TriggerID("power"),
+                               firedAt: Date(timeIntervalSince1970: 0))
+
+private func makeResponse(volume: Float = 0.3, muted: Bool = true)
+    -> (SirenResponse, FakeSirenPlayer, FakeAudioOutputControl) {
+    let player = FakeSirenPlayer()
+    let audio = FakeAudioOutputControl(
+        state: AudioOutputState(deviceID: 1, volume: volume, muted: muted))
+    return (SirenResponse(player: player, audio: audio), player, audio)
+}
+
+@Test func firingStartsThePlayerAtFullVolume() async {
+    let (response, player, audio) = makeResponse()
+    await response.fire(context: ctx)
+    #expect(player.isPlaying == true)
+    #expect(audio.state.volume == 1.0)
+    #expect(audio.state.muted == false)
+}
+
+@Test func resettingStopsThePlayerAndRestoresAudio() async {
+    let (response, player, audio) = makeResponse(volume: 0.3, muted: true)
+    await response.fire(context: ctx)
+    await response.reset()
+    #expect(player.isPlaying == false)
+    #expect(audio.state == AudioOutputState(deviceID: 1, volume: 0.3, muted: true))
+}
+
+// Firing twice must not overwrite the saved state with the forced state, or
+// disarming would leave the machine at full volume.
+@Test func firingTwiceStillRestoresTheOriginalVolume() async {
+    let (response, _, audio) = makeResponse(volume: 0.3, muted: false)
+    await response.fire(context: ctx)
+    await response.fire(context: ctx)
+    await response.reset()
+    #expect(audio.state.volume == 0.3)
+}
+
+@Test func resettingWithoutFiringIsHarmless() async {
+    let (response, player, audio) = makeResponse(volume: 0.3, muted: false)
+    await response.reset()
+    #expect(player.stopCount == 1)
+    #expect(audio.restoredStates.isEmpty)
+}
+
+@Test func sirenIsAlwaysAvailable() {
+    let (response, _, _) = makeResponse()
+    #expect(response.isAvailable == true)
+    #expect(response.identifier == "siren")
+}
