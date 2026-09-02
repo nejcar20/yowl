@@ -33,6 +33,15 @@ public final class IOKitSleepAssertion: SleepPreventing {
         ids.forEach { IOPMAssertionRelease($0) }
         ids.removeAll()
     }
+
+    // Must be isolated to match the default main-actor isolation of the class,
+    // and cannot be async (deinit cannot be async). Delegates to release() to
+    // maintain a single teardown path: if this deinit ran twice (impossible in
+    // normal Rust/ARC, but good discipline), release() safely handles an empty
+    // ids array.
+    isolated deinit {
+        release()
+    }
 }
 
 public final class FakeSleepAssertion: SleepPreventing {
