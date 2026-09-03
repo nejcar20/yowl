@@ -32,23 +32,33 @@ private func item(_ second: Int) -> EvidenceItem {
     #expect(files.count == 5, "the cap must hold on disk, not just in memory")
 }
 
+// If pruning ever inverted, alerts would attach months-old photographs while
+// the actual thief's were deleted. The previous version of this test could not
+// tell: every filename shared the same minute, so keeping the OLDEST passed it.
+// Items are now minutes apart and the exact survivors are named.
 @Test func theRealStoreKeepsTheNewestNotTheOldest() throws {
     let directory = temporaryDirectory()
     defer { try? FileManager.default.removeItem(at: directory) }
     let store = FileEvidenceStore(directory: directory, keepingMostRecent: 3)
 
-    for second in 1...10 { store.save(item(second)) }
+    let base = Date(timeIntervalSince1970: 1_000_000)
+    for minute in 0..<10 {
+        store.save(EvidenceItem(jpeg: Data([UInt8(minute)]),
+                                capturedAt: base.addingTimeInterval(Double(minute) * 60),
+                                trigger: "motion"))
+    }
 
-    let names = store.allItems().map(\.lastPathComponent).sorted()
-    #expect(names.count == 3)
-    // Names are timestamp-prefixed, so the survivors must be the last three.
-    #expect(names.allSatisfy { $0.contains("13-46") }, "unexpected names: \(names)")
-    let saved = try #require(names.last)
-    #expect(saved.hasSuffix("-motion.jpg"))
+    // The three newest are minutes 7, 8 and 9; their bytes identify them.
+    #expect(store.recentJPEGs(limit: 3) == [Data([9]), Data([8]), Data([7])],
+            "pruning must keep the newest and discard the oldest")
+    #expect(store.allItems().count == 3)
 }
 
 // Each shot must land in its own file. Identical timestamps meant one filename
 // and silent overwriting.
+// Whole-second spacing, so this passes against the old formatter too — it pins
+// that saving works at all, not the sub-second collision.
+// `shotsWithinTheSameSecondGetSeparateFiles` is the one that pins I5.
 @Test func distinctCaptureTimesProduceDistinctFiles() throws {
     let directory = temporaryDirectory()
     defer { try? FileManager.default.removeItem(at: directory) }

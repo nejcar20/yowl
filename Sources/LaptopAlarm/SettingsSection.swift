@@ -92,16 +92,18 @@ struct SettingsSection: View {
                         Toggle("Photograph whoever is there", isOn: Binding(
                             get: { model.snapshotEnabled },
                             set: { model.setSnapshotEnabled($0) }))
-                        HStack {
-                            Text("Saved on this Mac. The camera light stays on while armed.")
-                                .font(.caption2).foregroundStyle(.secondary)
-                            if model.savedEvidenceCount > 0 {
-                                Button("Show \(model.savedEvidenceCount)") {
-                                    model.revealEvidenceFolder()
-                                }
-                                .font(.caption2)
-                            }
+                        Text("Saved on this Mac. The camera light stays on while armed.")
+                            .font(.caption2).foregroundStyle(.secondary)
+                    }
+                    // Outside the camera gate on purpose: the privacy policy
+                    // promises this route to anyone holding photographs, and a
+                    // Mac with no camera — or with access revoked — still has
+                    // whatever was captured before.
+                    if model.savedEvidenceCount > 0 {
+                        Button("Show \(model.savedEvidenceCount) saved photo\(model.savedEvidenceCount == 1 ? "" : "s")") {
+                            model.revealEvidenceFolder()
                         }
+                        .font(.caption2)
                     }
                 }
 

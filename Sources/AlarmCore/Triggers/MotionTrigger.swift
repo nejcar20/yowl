@@ -30,12 +30,15 @@ public final class MotionTrigger: Trigger {
 
     public init(source: FrameSourcing, detector: EgoMotionDetector,
                 graceSeconds: TimeInterval) {
+        self.isAvailable = source.isAvailable
         self.source = source
         self.detector = detector
         self.graceSeconds = graceSeconds
     }
 
-    public var isAvailable: Bool { source.isAvailable }
+    /// Hardware capability, fixed at construction — the engine filters on this
+    /// once, so folding permission in would strand the trigger for the session.
+    public let isAvailable: Bool
 
     /// Prompts for camera access if it has not been decided yet, so the answer
     /// is known when the user switches the feature on rather than discovered at

@@ -26,6 +26,9 @@ final class AppModel: ObservableObject {
     @Published private(set) var snapshotEnabled = false
     @Published private(set) var alertEnabled = false
     @Published private(set) var alertTopic = ""
+    /// Surfaced once at launch when something had to be repaired or switched off
+    /// behind the user's back.
+    @Published private(set) var startupMessage: String?
     @Published private(set) var lidEnabled = false
     @Published private(set) var liveMotionScore: Double?
     @Published private(set) var isCalibrating = false
@@ -152,8 +155,26 @@ final class AppModel: ObservableObject {
             && preferences.isEnabled(snapshot.identifier, default: false)
         camera.setRetainsStills(snapshot.isEnabled)
         snapshotEnabled = snapshot.isActive
-        alert.isEnabled = alert.isAvailable
-            && preferences.isEnabled(alert.identifier, default: false)
+        // A stored preference of "on" with no topic in the Keychain used to leave
+        // the toggle reading on while fire() returned silently forever -- and
+        // the privacy policy itself invites users to delete that Keychain item.
+        // Mint a replacement, or turn the feature off and say so.
+        if preferences.isEnabled(alert.identifier, default: false) {
+            if let existing = topicStore.topic {
+                alert.isEnabled = true
+                alertTopic = existing
+            } else if let minted = topicStore.topicCreatingIfNeeded() {
+                alert.isEnabled = true
+                alertTopic = minted
+                alert.replaceTransport(NtfyTransport(topic: minted,
+                                                     http: URLSessionHTTPClient()))
+                startupMessage = "Your alert link was missing, so a new one was created. Re-subscribe on your phone."
+            } else {
+                alert.isEnabled = false
+                preferences.setEnabled(false, for: alert.identifier)
+                startupMessage = "Phone alerts were switched off: the alert link could not be read or created."
+            }
+        }
         alertEnabled = alert.isActive
         alert.includesPhotographs = snapshot.isActive
         alertTopic = topicStore.topic ?? ""
@@ -280,8 +301,6 @@ final class AppModel: ObservableObject {
         }
     }
 
-    var alertAvailable: Bool { true }
-
     /// The URL a phone subscribes to. Shown once, for pairing, and treated as a
     /// secret everywhere else: anyone holding it can read the photographs.
     var alertSubscribeURL: String {
@@ -300,6 +319,7 @@ final class AppModel: ObservableObject {
         // turns this on never has one.
         guard let topic = topicStore.topicCreatingIfNeeded() else {
             alertEnabled = false
+            preferences.setEnabled(false, for: alertResponse.identifier)
             settingsMessage = "Could not create a private alert link. Try again, or check that the Keychain is unlocked."
             return
         }
@@ -314,10 +334,14 @@ final class AppModel: ObservableObject {
     /// already has it, which is the point of being able to rotate.
     func regenerateAlertTopic() {
         guard !settingsLocked else { return }
-        topicStore.reset()
+        guard topicStore.reset() else {
+            settingsMessage = "Could not remove the old link, so a new one was not created. The old link is still active — try again."
+            return
+        }
         guard let topic = topicStore.topicCreatingIfNeeded() else {
             settingsMessage = "Could not create a new link. The old one is no longer in use, so alerts are off until this succeeds."
             alertResponse.isEnabled = false
+            preferences.setEnabled(false, for: alertResponse.identifier)
             alertEnabled = false
             alertTopic = ""
             return
@@ -331,10 +355,11 @@ final class AppModel: ObservableObject {
         guard !alertSubscribeURL.isEmpty else { return }
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
-        // Marked concealed so clipboard managers do not file this away in a
-        // searchable history and Universal Clipboard does not sync it to every
-        // other device. It is the credential the policy tells users to treat
-        // like a password.
+        // Marked concealed so clipboard managers (Paste, Maccy, Alfred) do not
+        // file this away in a searchable history. That marker is a third-party
+        // convention, not an Apple API, so it says nothing about Universal
+        // Clipboard — but it is the credential the policy tells users to treat
+        // like a password, and this is the protection available.
         pasteboard.setData(Data(), forType: .init("org.nspasteboard.ConcealedType"))
         pasteboard.setString(alertSubscribeURL, forType: .string)
         settingsMessage = "Link copied. Open it on your phone, or subscribe to it in the ntfy app."
@@ -352,7 +377,9 @@ final class AppModel: ObservableObject {
             let ok = await self.alertResponse.sendTest()
             self.settingsMessage = ok
                 ? "Test alert sent. It should be on your phone now."
-                : "Could not reach ntfy.sh. Check the network and try again."
+                : (self.alertTopic.isEmpty
+                   ? "There is no alert link yet. Switch phone alerts off and on again to create one."
+                   : "Could not reach ntfy.sh. Check the network and try again.")
         }
     }
 

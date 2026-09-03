@@ -62,10 +62,14 @@ private func makeResponse(_ camera: FakeStillCapture, _ store: InMemoryEvidenceS
     #expect(store.saved.count == 1, "disarming must not keep photographing the room")
 }
 
-@Test func theResponseIsUnavailableWithoutACamera() {
+// Availability is fixed at construction because the engine filters on it once.
+// Camera permission is NOT availability: folding it in meant a Mac that launched
+// with access denied dropped photographs permanently, and granting access
+// afterwards could not bring them back while the toggle still read on.
+@Test func availabilityIsFixedSoTheEngineNeverStrandsTheResponse() {
     let camera = FakeStillCapture()
     camera.available = false
-    #expect(makeResponse(camera, InMemoryEvidenceStore()).isAvailable == false)
+    #expect(makeResponse(camera, InMemoryEvidenceStore()).isAvailable == true)
 }
 
 // Off unless asked for: it writes photographs of whoever is in front of the

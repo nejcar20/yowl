@@ -16,6 +16,8 @@ nonisolated public struct TimestampedStill: Equatable, Sendable {
 
 /// Something that can produce a still image from the camera.
 public protocol StillCapturing: AnyObject {
+    /// Hardware capability, fixed for the process — not permission, which the
+    /// engine's construction-time filter would freeze.
     var isAvailable: Bool { get }
     /// The most recent frame as JPEG, or nil if none is available.
     func captureStill() -> Data?
@@ -58,7 +60,9 @@ public final class SnapshotResponse: Response {
         self.clock = clock
     }
 
-    public var isAvailable: Bool { camera.isAvailable }
+    /// Fixed at construction, as `Capability` requires. Whether the camera is
+    /// permitted right now is user configuration and lives in `isEnabled`.
+    public let isAvailable = true
 
     public func fire(context: AlarmContext) async {
         cancelPending()
