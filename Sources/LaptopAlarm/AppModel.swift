@@ -23,11 +23,16 @@ final class AppModel: ObservableObject {
     @Published private(set) var settingsMessage: String?
     @Published private(set) var powerEnabled = true
     @Published private(set) var motionEnabled = false
+    @Published private(set) var lidEnabled = false
     @Published private(set) var liveMotionScore: Double?
     @Published private(set) var isCalibrating = false
     /// Shown in the main panel, not buried in settings: a configuration that
     /// cannot protect anything has to be visible before the user walks away.
     @Published private(set) var protectionWarning: String?
+    /// Mirrors `ProtectionStatus` for the settings pane, so "nothing is enabled"
+    /// has exactly one implementation rather than a conjunction repeated at
+    /// every site that has to be edited when a trigger is added.
+    @Published private(set) var nothingEnabled = false
     @Published private(set) var motionSensitivity = MotionSensitivity.sensitivity(
         forThreshold: MotionSensitivity.defaultValue)
 
@@ -37,12 +42,17 @@ final class AppModel: ObservableObject {
     private let screenLock: ScreenLockResponse
     private let powerTrigger: PowerTrigger
     private let motionTrigger: MotionTrigger
+    private let lidTrigger: LidAngleTrigger
     /// One list so a per-trigger setting cannot reach some triggers and not others.
-    private var allTriggers: [any Trigger] { [powerTrigger, motionTrigger] }
+    private var allTriggers: [any Trigger] {
+        [powerTrigger, motionTrigger, lidTrigger]
+    }
 
     /// Recomputed whenever anything that affects coverage changes.
     private func refreshProtectionWarning() {
-        protectionWarning = ProtectionStatus(triggers: allTriggers).warning
+        let status = ProtectionStatus(triggers: allTriggers)
+        protectionWarning = status.warning
+        nothingEnabled = status == .nothingEnabled
     }
     private let preferences: PreferenceStoring
     private var countdownTask: Task<Void, Never>?
@@ -61,6 +71,10 @@ final class AppModel: ObservableObject {
             detector: EgoMotionDetector(threshold: preferences.motionThreshold),
             graceSeconds: preferences.graceSeconds)
         self.motionTrigger = motion
+        let lid = LidAngleTrigger(sensor: HIDLidAngleSensor(),
+                                  graceSeconds: preferences.graceSeconds)
+        self.lidTrigger = lid
+        let clock = SystemClock()
         let siren = SirenResponse(player: AVSirenPlayer(),
                                   audio: CoreAudioOutputControl())
         self.siren = siren
@@ -71,9 +85,9 @@ final class AppModel: ObservableObject {
         let lock = ScreenLockResponse(locker: LoginFrameworkScreenLocker())
         self.screenLock = lock
 
-        engine = AlarmEngine(triggers: [trigger, motion],
+        engine = AlarmEngine(triggers: [trigger, motion, lid],
                              responses: [siren, lock],
-                             clock: SystemClock(),
+                             clock: clock,
                              passcodes: passcodes,
                              sleepAssertion: IOKitSleepAssertion())
         engine.onStateChange = { [weak self] newState in
@@ -105,8 +119,13 @@ final class AppModel: ObservableObject {
         // else defaults on; this one requires a deliberate decision.
         motion.isEnabled = motion.isAvailable
             && preferences.isEnabled(motion.identifier, default: false)
+        // Lid and network default OFF like motion: both can fire in ordinary
+        // use — closing your own laptop, walking out of Wi-Fi range — so they
+        // are a deliberate choice rather than something to discover by accident.
+        lid.isEnabled = lid.isAvailable && preferences.isEnabled(lid.identifier, default: false)
         motionEnabled = motion.isActive
         powerEnabled = trigger.isActive
+        lidEnabled = lid.isActive
         motionSensitivity = MotionSensitivity.sensitivity(forThreshold: preferences.motionThreshold)
         refreshProtectionWarning()
         sirenEnabled = siren.isActive
@@ -163,16 +182,11 @@ final class AppModel: ObservableObject {
 
     /// Three different reasons arming can be refused, and telling the user the
     /// wrong one is worse than saying nothing.
+    /// Derived from the same status the panel shows, so the refusal and the
+    /// warning can never disagree about why.
     private var armRefusalReason: String {
-        if !powerEnabled && !motionEnabled {
-            return "Turn on at least one trigger in Settings — nothing is set to watch for anything."
-        }
-        if powerEnabled && !powerTrigger.canFireNow {
-            return motionEnabled
-                ? "Plug in the charger, or the charger trigger has nothing left to detect."
-                : "Plug in the charger to arm. The alarm fires when the charger is pulled."
-        }
-        return "Nothing can currently watch for a theft."
+        ProtectionStatus(triggers: allTriggers).warning
+            ?? "Nothing can currently watch for a theft."
     }
 
     /// A response the user can switch off. Only the siren and the screen lock
@@ -200,6 +214,18 @@ final class AppModel: ObservableObject {
     }
 
     var motionAvailable: Bool { motionTrigger.isAvailable }
+
+    var lidAvailable: Bool { lidTrigger.isAvailable }
+
+    func setLidEnabled(_ enabled: Bool) {
+        guard !settingsLocked else { return }
+        let applied = enabled && lidTrigger.isAvailable
+        lidTrigger.isEnabled = applied
+        preferences.setEnabled(applied, for: lidTrigger.identifier)
+        lidEnabled = lidTrigger.isActive
+        refreshProtectionWarning()
+    }
+
 
     func setPowerEnabled(_ enabled: Bool) {
         guard !settingsLocked else { return }

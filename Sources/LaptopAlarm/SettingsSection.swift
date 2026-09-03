@@ -24,6 +24,11 @@ struct SettingsSection: View {
                     Toggle("Charger unplugged", isOn: Binding(
                         get: { model.powerEnabled },
                         set: { model.setPowerEnabled($0) }))
+                    if model.lidAvailable {
+                        Toggle("Lid is closed part-way", isOn: Binding(
+                            get: { model.lidEnabled },
+                            set: { model.setLidEnabled($0) }))
+                    }
                     if model.motionAvailable {
                         Toggle("Laptop is moved (uses the camera)", isOn: Binding(
                             get: { model.motionEnabled },
@@ -61,7 +66,7 @@ struct SettingsSection: View {
                             }
                         }
                     }
-                    if !model.powerEnabled && !model.motionEnabled {
+                    if model.nothingEnabled {
                         Text("Nothing is set to watch for anything — arming will refuse.")
                             .font(.caption2).foregroundStyle(.orange)
                     }

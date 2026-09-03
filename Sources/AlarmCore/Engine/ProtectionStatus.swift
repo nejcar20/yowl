@@ -35,7 +35,7 @@ public enum ProtectionStatus: Equatable {
         case .nothingEnabled:
             return "Nothing is watching. Turn on a trigger in Settings, or this will not catch a theft."
         case .nothingCanFireNow:
-            return "Nothing can fire right now. If only the charger trigger is on, plug the charger in."
+            return "Nothing can fire right now: the charger is already unplugged, or the lid is already too far closed to give a useful warning."
         }
     }
 }
