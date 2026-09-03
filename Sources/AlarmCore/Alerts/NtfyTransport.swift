@@ -79,7 +79,22 @@ public final class NtfyTransport: AlertTransport {
 /// Stores the ntfy topic. It is a secret — anyone holding it can read the
 /// photographs — so it lives in the Keychain beside the passcode rather than in
 /// user defaults.
-public final class KeychainTopicStore {
+/// So the alert-link store can be faked in tests.
+public extension TopicStoring {
+    /// The stored topic, or an empty string when there is none to use.
+    func readTopicValue() -> String {
+        if case let .found(value) = readTopic() { return value }
+        return ""
+    }
+}
+
+public protocol TopicStoring: AnyObject {
+    func readTopic() -> KeychainTopicStore.TopicRead
+    func topicCreatingIfNeeded() -> String?
+    @discardableResult func reset() -> Bool
+}
+
+public final class KeychainTopicStore: TopicStoring {
     private let service: String
     private let account = "ntfy-topic"
 
@@ -158,3 +173,35 @@ public final class KeychainTopicStore {
         return status == errSecSuccess || status == errSecItemNotFound
     }
 }
+
+#if DEBUG
+public final class InMemoryTopicStore: TopicStoring {
+    public var stored: KeychainTopicStore.TopicRead
+    public var mintResult: String?
+    public var resetResult = true
+    public private(set) var mintCount = 0
+    public private(set) var resetCount = 0
+
+    public init(stored: KeychainTopicStore.TopicRead = .notFound,
+                mintResult: String? = "minted-topic") {
+        self.stored = stored
+        self.mintResult = mintResult
+    }
+
+    public func readTopic() -> KeychainTopicStore.TopicRead { stored }
+
+    public func topicCreatingIfNeeded() -> String? {
+        if case let .found(existing) = stored { return existing }
+        mintCount += 1
+        if let mintResult { stored = .found(mintResult) }
+        return mintResult
+    }
+
+    @discardableResult
+    public func reset() -> Bool {
+        resetCount += 1
+        if resetResult { stored = .notFound }
+        return resetResult
+    }
+}
+#endif

@@ -6,12 +6,14 @@ import AlarmCore
 /// Every control is disabled while armed. That is a security property, not a
 /// UX nicety: switching off the siren while it is screaming, or stretching the
 /// grace window mid-countdown, would be a disarm that never meets the passcode.
-struct SettingsSection: View {
+public struct SettingsSection: View {
     @ObservedObject var model: AppModel
+
+    public init(model: AppModel) { self.model = model }
     @State private var expanded = false
     @State private var newPasscode = ""
 
-    var body: some View {
+    public var body: some View {
         DisclosureGroup("Settings", isExpanded: $expanded) {
             VStack(alignment: .leading, spacing: 10) {
                 if model.settingsLocked {

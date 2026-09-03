@@ -2,60 +2,129 @@ import SwiftUI
 import AlarmCore
 import ServiceManagement
 
-final class AppModel: ObservableObject {
-    @Published private(set) var state: AlarmState = .disarmed
-    @Published var passcodeEntry = ""
-    @Published var errorMessage: String?
+/// Everything `AppModel` needs from the outside world.
+///
+/// Introduced so the model can be tested at all. Every serious defect this
+/// project hit lived in `AppModel` — four separate cases of a toggle reading
+/// "on" while the capability was inert — and none was catchable while the model
+/// built real cameras, Keychains and IOKit handles in its initialiser.
+public struct AppDependencies {
+    public var passcodes: PasscodeStoring
+    public var preferences: PreferenceStoring
+    public var topicStore: TopicStoring
+    public var camera: any FrameSourcing & StillCapturing
+    public var lidSensor: LidAngleSensing
+    public var powerMonitor: PowerSourceMonitoring
+    public var audio: AudioOutputControlling
+    public var siren: SirenPlaying
+    public var screenLocker: ScreenLocking
+    public var sleepAssertion: SleepPreventing
+    public var evidence: EvidenceStoring
+    public var http: HTTPPosting
+    public var clock: AlarmClock
+
+    public init(passcodes: PasscodeStoring,
+                preferences: PreferenceStoring,
+                topicStore: TopicStoring,
+                camera: any FrameSourcing & StillCapturing,
+                lidSensor: LidAngleSensing,
+                powerMonitor: PowerSourceMonitoring,
+                audio: AudioOutputControlling,
+                siren: SirenPlaying,
+                screenLocker: ScreenLocking,
+                sleepAssertion: SleepPreventing,
+                evidence: EvidenceStoring,
+                http: HTTPPosting,
+                clock: AlarmClock) {
+        self.passcodes = passcodes
+        self.preferences = preferences
+        self.topicStore = topicStore
+        self.camera = camera
+        self.lidSensor = lidSensor
+        self.powerMonitor = powerMonitor
+        self.audio = audio
+        self.siren = siren
+        self.screenLocker = screenLocker
+        self.sleepAssertion = sleepAssertion
+        self.evidence = evidence
+        self.http = http
+        self.clock = clock
+    }
+
+    /// The real thing. The only place these concrete types are named.
+    public static func production() -> AppDependencies {
+        AppDependencies(
+            passcodes: KeychainPasscodeStore(),
+            preferences: UserDefaultsPreferences(),
+            topicStore: KeychainTopicStore(),
+            camera: CameraFrameSource(framesPerSecond: 5),
+            lidSensor: HIDLidAngleSensor(),
+            powerMonitor: IOKitPowerSourceMonitor(),
+            audio: CoreAudioOutputControl(),
+            siren: AVSirenPlayer(),
+            screenLocker: LoginFrameworkScreenLocker(),
+            sleepAssertion: IOKitSleepAssertion(),
+            evidence: FileEvidenceStore(),
+            http: URLSessionHTTPClient(),
+            clock: SystemClock())
+    }
+}
+
+public final class AppModel: ObservableObject {
+    @Published public private(set) var state: AlarmState = .disarmed
+    @Published public var passcodeEntry = ""
+    @Published public var errorMessage: String?
     /// Non-blocking problems: armed, but with a degraded guarantee.
-    @Published private(set) var warningMessage: String?
-    @Published var needsPasscodeSetup: Bool
+    @Published public private(set) var warningMessage: String?
+    @Published public var needsPasscodeSetup: Bool
     /// Whether the siren is actually producing sound, distinct from whether the
     /// alarm is firing: audio-device failures should be visible, not silent.
-    @Published private(set) var isSirenSounding = false
+    @Published public private(set) var isSirenSounding = false
     /// Seconds left in the grace window. Nil unless counting down.
-    @Published private(set) var graceRemaining: Int?
+    @Published public private(set) var graceRemaining: Int?
     /// Settings, mirrored for the UI. Writes go through the `set…` methods so
     /// preference storage and the live objects can never disagree.
-    @Published private(set) var sirenEnabled = true
-    @Published private(set) var screenLockEnabled = true
-    @Published private(set) var graceSeconds: TimeInterval = GraceLimits.defaultValue
-    @Published private(set) var launchAtLogin = false
-    @Published private(set) var settingsMessage: String?
-    @Published private(set) var powerEnabled = true
-    @Published private(set) var motionEnabled = false
-    @Published private(set) var snapshotEnabled = false
-    @Published private(set) var alertEnabled = false
-    @Published private(set) var alertTopic = ""
+    @Published public private(set) var sirenEnabled = true
+    @Published public private(set) var screenLockEnabled = true
+    @Published public private(set) var graceSeconds: TimeInterval = GraceLimits.defaultValue
+    @Published public private(set) var launchAtLogin = false
+    @Published public private(set) var settingsMessage: String?
+    @Published public private(set) var powerEnabled = true
+    @Published public private(set) var motionEnabled = false
+    @Published public private(set) var snapshotEnabled = false
+    @Published public private(set) var alertEnabled = false
+    @Published public private(set) var alertTopic = ""
     /// Surfaced once at launch when something had to be repaired or switched off
     /// behind the user's back.
-    @Published private(set) var startupMessage: String?
+    @Published public private(set) var startupMessage: String?
 
     /// Dismissable: it describes a one-off repair at launch, not a live state.
-    func dismissStartupMessage() { startupMessage = nil }
-    @Published private(set) var lidEnabled = false
-    @Published private(set) var liveMotionScore: Double?
-    @Published private(set) var isCalibrating = false
+    public func dismissStartupMessage() { startupMessage = nil }
+    @Published public private(set) var lidEnabled = false
+    @Published public private(set) var liveMotionScore: Double?
+    @Published public private(set) var isCalibrating = false
     /// Shown in the main panel, not buried in settings: a configuration that
     /// cannot protect anything has to be visible before the user walks away.
-    @Published private(set) var protectionWarning: String?
+    @Published public private(set) var protectionWarning: String?
     /// Mirrors `ProtectionStatus` for the settings pane, so "nothing is enabled"
     /// has exactly one implementation rather than a conjunction repeated at
     /// every site that has to be edited when a trigger is added.
-    @Published private(set) var nothingEnabled = false
-    @Published private(set) var motionSensitivity = MotionSensitivity.sensitivity(
+    @Published public private(set) var nothingEnabled = false
+    @Published public private(set) var motionSensitivity = MotionSensitivity.sensitivity(
         forThreshold: MotionSensitivity.defaultValue)
 
     private let engine: AlarmEngine
-    private let passcodes: KeychainPasscodeStore
+    private let passcodes: PasscodeStoring
     private let siren: SirenResponse
     private let screenLock: ScreenLockResponse
     private let powerTrigger: PowerTrigger
     private let motionTrigger: MotionTrigger
     private let snapshotResponse: SnapshotResponse
-    private let camera: CameraFrameSource
-    private let evidenceStore: FileEvidenceStore
+    private let camera: any FrameSourcing & StillCapturing
+    private let evidenceStore: EvidenceStoring
     private let alertResponse: AlertResponse
-    private let topicStore: KeychainTopicStore
+    private let topicStore: TopicStoring
+    private let http: HTTPPosting
     private let lidTrigger: LidAngleTrigger
     /// One list so a per-trigger setting cannot reach some triggers and not others.
     private var allTriggers: [any Trigger] {
@@ -71,47 +140,51 @@ final class AppModel: ObservableObject {
     private let preferences: PreferenceStoring
     private var countdownTask: Task<Void, Never>?
 
-    init(preferences: PreferenceStoring = UserDefaultsPreferences()) {
+    public convenience init() { self.init(dependencies: .production()) }
+
+    public init(dependencies: AppDependencies) {
+        let preferences = dependencies.preferences
         self.preferences = preferences
-        let passcodes = KeychainPasscodeStore()
+        let passcodes = dependencies.passcodes
         self.passcodes = passcodes
         self.needsPasscodeSetup = !passcodes.hasPasscode
 
-        let trigger = PowerTrigger(monitor: IOKitPowerSourceMonitor(),
+        let trigger = PowerTrigger(monitor: dependencies.powerMonitor,
                                    graceSeconds: preferences.graceSeconds)
         self.powerTrigger = trigger
         // One camera source shared by motion detection and evidence capture:
         // two sessions on one device is a conflict, and reusing the frames the
         // detector already receives means a photo from the exact moment the
         // alarm fired rather than one taken a second later.
-        let camera = CameraFrameSource(framesPerSecond: 5)
+        let camera = dependencies.camera
         self.camera = camera
         let motion = MotionTrigger(
             source: camera,
             detector: EgoMotionDetector(threshold: preferences.motionThreshold),
             graceSeconds: preferences.graceSeconds)
         self.motionTrigger = motion
-        let lid = LidAngleTrigger(sensor: HIDLidAngleSensor(),
+        let lid = LidAngleTrigger(sensor: dependencies.lidSensor,
                                   graceSeconds: preferences.graceSeconds)
         self.lidTrigger = lid
-        let clock = SystemClock()
-        let siren = SirenResponse(player: AVSirenPlayer(),
-                                  audio: CoreAudioOutputControl())
+        let clock = dependencies.clock
+        let siren = SirenResponse(player: dependencies.siren,
+                                  audio: dependencies.audio)
         self.siren = siren
         // LoginFrameworkScreenLocker never calls dlclose (its function pointer
         // would dangle), so it must be instantiated exactly once per process.
         // AppModel is itself a single @StateObject for the app's lifetime, so
         // this initializer is that one place.
-        let lock = ScreenLockResponse(locker: LoginFrameworkScreenLocker())
-        let evidenceStore = FileEvidenceStore()
+        let lock = ScreenLockResponse(locker: dependencies.screenLocker)
+        let evidenceStore = dependencies.evidence
         self.evidenceStore = evidenceStore
         let snapshot = SnapshotResponse(camera: camera, store: evidenceStore, clock: clock)
         self.snapshotResponse = snapshot
-        let topicStore = KeychainTopicStore()
+        let topicStore = dependencies.topicStore
         self.topicStore = topicStore
+        self.http = dependencies.http
         let alert = AlertResponse(
-            transport: NtfyTransport(topic: topicStore.topic ?? "",
-                                     http: URLSessionHTTPClient()),
+            transport: NtfyTransport(topic: topicStore.readTopicValue(),
+                                     http: dependencies.http),
             evidence: evidenceStore)
         self.alertResponse = alert
         self.screenLock = lock
@@ -120,7 +193,7 @@ final class AppModel: ObservableObject {
                              responses: [siren, lock, snapshot, alert],
                              clock: clock,
                              passcodes: passcodes,
-                             sleepAssertion: IOKitSleepAssertion())
+                             sleepAssertion: dependencies.sleepAssertion)
         engine.onStateChange = { [weak self] newState in
             self?.state = newState
             self?.updateCountdown(for: newState)
@@ -175,7 +248,7 @@ final class AppModel: ObservableObject {
                 alert.isEnabled = true
                 alertTopic = minted
                 alert.replaceTransport(NtfyTransport(topic: minted,
-                                                     http: URLSessionHTTPClient()))
+                                                     http: dependencies.http))
                 startupMessage = "Your alert link was missing, so a new one was created. Re-subscribe on your phone."
             } else {
                 alert.isEnabled = false
@@ -248,7 +321,7 @@ final class AppModel: ObservableObject {
     /// nicety: being able to switch off the siren while it is screaming, or
     /// stretch the grace window mid-countdown, would be a disarm that never
     /// meets the passcode.
-    var settingsLocked: Bool { isArmed }
+    public var settingsLocked: Bool { isArmed }
 
     /// Three different reasons arming can be refused, and telling the user the
     /// wrong one is worse than saying nothing.
@@ -265,7 +338,7 @@ final class AppModel: ObservableObject {
     /// Every setter clamps against `isAvailable`. Without the clamp the UI can
     /// claim a security feature is on while the engine has already dropped it —
     /// exactly the lie the two-axis design exists to prevent.
-    func setSirenEnabled(_ enabled: Bool) {
+    public func setSirenEnabled(_ enabled: Bool) {
         guard !settingsLocked else { return }
         let applied = enabled && siren.isAvailable
         siren.isEnabled = applied
@@ -274,7 +347,7 @@ final class AppModel: ObservableObject {
         warnIfNoResponsesLeft()
     }
 
-    func setScreenLockEnabled(_ enabled: Bool) {
+    public func setScreenLockEnabled(_ enabled: Bool) {
         guard !settingsLocked else { return }
         let applied = enabled && screenLock.isAvailable
         screenLock.isEnabled = applied
@@ -283,12 +356,12 @@ final class AppModel: ObservableObject {
         warnIfNoResponsesLeft()
     }
 
-    var motionAvailable: Bool { motionTrigger.isAvailable }
-    var snapshotAvailable: Bool { snapshotResponse.isAvailable }
-    var evidenceFolder: URL { evidenceStore.directoryURL }
-    var savedEvidenceCount: Int { evidenceStore.allItems().count }
+    public var motionAvailable: Bool { motionTrigger.isAvailable }
+    public var snapshotAvailable: Bool { snapshotResponse.isAvailable }
+    public var evidenceFolder: URL { evidenceStore.directoryURL }
+    public var savedEvidenceCount: Int { evidenceStore.allItems().count }
 
-    func setSnapshotEnabled(_ enabled: Bool) {
+    public func setSnapshotEnabled(_ enabled: Bool) {
         guard !settingsLocked else { return }
         guard enabled else {
             snapshotResponse.isEnabled = false
@@ -318,11 +391,11 @@ final class AppModel: ObservableObject {
 
     /// The URL a phone subscribes to. Shown once, for pairing, and treated as a
     /// secret everywhere else: anyone holding it can read the photographs.
-    var alertSubscribeURL: String {
+    public var alertSubscribeURL: String {
         alertTopic.isEmpty ? "" : "https://ntfy.sh/\(alertTopic)"
     }
 
-    func setAlertEnabled(_ enabled: Bool) {
+    public func setAlertEnabled(_ enabled: Bool) {
         guard !settingsLocked else { return }
         // Whatever the launch message said is no longer what is happening.
         startupMessage = nil
@@ -349,7 +422,7 @@ final class AppModel: ObservableObject {
 
     /// Replaces the topic entirely. The old one keeps working for anyone who
     /// already has it, which is the point of being able to rotate.
-    func regenerateAlertTopic() {
+    public func regenerateAlertTopic() {
         guard !settingsLocked else { return }
         startupMessage = nil
         guard topicStore.reset() else {
@@ -369,7 +442,7 @@ final class AppModel: ObservableObject {
         settingsMessage = "New link created. Re-subscribe on your phone; the old link no longer receives alerts from this Mac."
     }
 
-    func copyAlertLink() {
+    public func copyAlertLink() {
         guard !alertSubscribeURL.isEmpty else { return }
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
@@ -385,10 +458,10 @@ final class AppModel: ObservableObject {
 
     private func rebuildAlertTransport() {
         alertResponse.replaceTransport(
-            NtfyTransport(topic: alertTopic, http: URLSessionHTTPClient()))
+            NtfyTransport(topic: alertTopic, http: http))
     }
 
-    func sendTestAlert() {
+    public func sendTestAlert() {
         guard alertResponse.isAvailable else { return }
         Task { [weak self] in
             guard let self else { return }
@@ -401,13 +474,13 @@ final class AppModel: ObservableObject {
         }
     }
 
-    func revealEvidenceFolder() {
+    public func revealEvidenceFolder() {
         NSWorkspace.shared.open(evidenceStore.directoryURL)
     }
 
-    var lidAvailable: Bool { lidTrigger.isAvailable }
+    public var lidAvailable: Bool { lidTrigger.isAvailable }
 
-    func setLidEnabled(_ enabled: Bool) {
+    public func setLidEnabled(_ enabled: Bool) {
         guard !settingsLocked else { return }
         let applied = enabled && lidTrigger.isAvailable
         lidTrigger.isEnabled = applied
@@ -417,7 +490,7 @@ final class AppModel: ObservableObject {
     }
 
 
-    func setPowerEnabled(_ enabled: Bool) {
+    public func setPowerEnabled(_ enabled: Bool) {
         guard !settingsLocked else { return }
         let applied = enabled && powerTrigger.isAvailable
         powerTrigger.isEnabled = applied
@@ -426,7 +499,7 @@ final class AppModel: ObservableObject {
         refreshProtectionWarning()
     }
 
-    func setMotionEnabled(_ enabled: Bool) {
+    public func setMotionEnabled(_ enabled: Bool) {
         guard !settingsLocked else { return }
         guard enabled else {
             motionTrigger.isEnabled = false
@@ -455,7 +528,7 @@ final class AppModel: ObservableObject {
 
     /// The live score readout. Only runs while the settings pane asks for it,
     /// so the camera light is never on without a visible reason.
-    func startCalibration() {
+    public func startCalibration() {
         guard !settingsLocked, motionTrigger.isAvailable, !isCalibrating else { return }
         do {
             try motionTrigger.startCalibration { [weak self] score in
@@ -471,20 +544,20 @@ final class AppModel: ObservableObject {
     /// Also called when the settings UI disappears. A calibration session left
     /// running keeps the green camera light on with nothing on screen
     /// explaining why, which is the most trust-destroying thing this app can do.
-    func stopCalibration() {
+    public func stopCalibration() {
         guard isCalibrating else { return }
         motionTrigger.stopCalibration()
         isCalibrating = false
         liveMotionScore = nil
     }
 
-    var motionThreshold: Double { motionTrigger.detector.threshold }
+    public var motionThreshold: Double { motionTrigger.detector.threshold }
 
     /// Presented as sensitivity, which runs the opposite way to the threshold it
     /// sets. Takes effect immediately, including mid-calibration, so the user
     /// can drag the slider while watching the live number and see the colour
     /// change at the point they choose.
-    func setMotionSensitivity(_ sensitivity: Double) {
+    public func setMotionSensitivity(_ sensitivity: Double) {
         guard !settingsLocked else { return }
         let threshold = MotionSensitivity.threshold(forSensitivity: sensitivity)
         preferences.motionThreshold = threshold
@@ -493,8 +566,8 @@ final class AppModel: ObservableObject {
         motionSensitivity = MotionSensitivity.sensitivity(forThreshold: applied)
     }
 
-    var sirenAvailable: Bool { siren.isAvailable }
-    var screenLockAvailable: Bool { screenLock.isAvailable }
+    public var sirenAvailable: Bool { siren.isAvailable }
+    public var screenLockAvailable: Bool { screenLock.isAvailable }
 
     /// Reads the live objects, not the UI mirrors: a mirror can say "on" for a
     /// response the engine dropped, which is precisely when this warning matters.
@@ -508,7 +581,7 @@ final class AppModel: ObservableObject {
         }
     }
 
-    func setGraceSeconds(_ seconds: TimeInterval) {
+    public func setGraceSeconds(_ seconds: TimeInterval) {
         guard !settingsLocked else { return }
         preferences.graceSeconds = seconds
         // Read back: the store clamps, so this is the value actually applied.
@@ -525,7 +598,7 @@ final class AppModel: ObservableObject {
     /// unbundled debug run, or a copy macOS does not trust. Failing loudly here
     /// is right: silently not registering would mean the user believes they are
     /// protected at every login when they are not.
-    func setLaunchAtLogin(_ enabled: Bool) {
+    public func setLaunchAtLogin(_ enabled: Bool) {
         guard !settingsLocked else { return }
         do {
             if enabled { try SMAppService.mainApp.register() }
@@ -555,7 +628,7 @@ final class AppModel: ObservableObject {
         return status == .enabled || status == .requiresApproval
     }
 
-    func changePasscode(to newPasscode: String) {
+    public func changePasscode(to newPasscode: String) {
         guard !settingsLocked else { return }
         do {
             try passcodes.setPasscode(newPasscode)
@@ -567,15 +640,15 @@ final class AppModel: ObservableObject {
         }
     }
 
-    var isArmed: Bool { state != .disarmed }
-    var isFiring: Bool { if case .firing = state { return true }; return false }
+    public var isArmed: Bool { state != .disarmed }
+    public var isFiring: Bool { if case .firing = state { return true }; return false }
 
     /// Settable whenever disarmed. The armed guard is the whole protection: it
     /// stops the obvious bypass of setting a new passcode mid-alarm and using it
     /// to silence the siren. Demanding the *current* passcode on top adds
     /// nothing — a Mac sitting unlocked and disarmed has already lost, and the
     /// alarm is not what is protecting it at that point.
-    func setPasscode(_ passcode: String) {
+    public func setPasscode(_ passcode: String) {
         guard !settingsLocked else { return }
         do {
             try passcodes.setPasscode(passcode)
@@ -592,7 +665,7 @@ final class AppModel: ObservableObject {
         }
     }
 
-    func arm() {
+    public func arm() {
         // The alarm needs exclusive use of the camera, and a calibration
         // session left running would hold it open.
         stopCalibration()
@@ -643,7 +716,7 @@ final class AppModel: ObservableObject {
         }
     }
 
-    func disarm() {
+    public func disarm() {
         if engine.disarm(passcode: passcodeEntry) {
             // Release the camera if we were the ones holding it open. The motion
             // trigger releases its own.
@@ -666,7 +739,7 @@ final class AppModel: ObservableObject {
     /// either way, and vandalised audio settings would outlive it.
     deinit { countdownTask?.cancel() }
 
-    func restoreAudioBeforeTermination() {
+    public func restoreAudioBeforeTermination() {
         siren.restoreAudioAndSilence()
     }
 }

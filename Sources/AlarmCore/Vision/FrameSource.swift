@@ -15,6 +15,9 @@ public protocol FrameSourcing: AnyObject {
     var isAvailable: Bool { get }
     /// Raises the capture rate while the user is watching a live readout.
     func setHighRate(_ high: Bool)
+    /// Keeps the most recent full-resolution frame, and a short run-up, for
+    /// evidence.
+    func setRetainsStills(_ retain: Bool)
     /// Prompts for access if the user has not been asked yet. Returns whether
     /// capture is permitted. Called when the feature is switched on, so the
     /// answer is known before anything depends on it.
@@ -301,6 +304,8 @@ public final class FakeFrameSource: FrameSourcing {
 
     public private(set) var isHighRate = false
     public func setHighRate(_ high: Bool) { isHighRate = high }
+    public private(set) var retainsStills = false
+    public func setRetainsStills(_ retain: Bool) { retainsStills = retain }
 
     public func start(onFrame: @escaping (GrayscaleFrame) -> Void) throws {
         guard isAvailable else { throw FrameSourceError.cameraUnavailable }

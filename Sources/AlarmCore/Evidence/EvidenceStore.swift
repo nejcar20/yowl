@@ -20,6 +20,8 @@ public protocol EvidenceStoring: AnyObject {
     func allItems() -> [URL]
     /// The newest photographs, for an alert to attach.
     func recentJPEGs(limit: Int) -> [Data]
+    /// Where the photographs live, so the app can show the user.
+    var directoryURL: URL { get }
 }
 
 /// Writes evidence to Application Support, one JPEG per shot.
@@ -112,5 +114,7 @@ public final class InMemoryEvidenceStore: EvidenceStoring {
     public func recentJPEGs(limit: Int) -> [Data] {
         saved.reversed().prefix(limit).map(\.jpeg)
     }
+
+    public let directoryURL = URL(fileURLWithPath: NSTemporaryDirectory())
 }
 #endif
