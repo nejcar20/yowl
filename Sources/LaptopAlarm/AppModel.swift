@@ -23,6 +23,8 @@ final class AppModel: ObservableObject {
     @Published private(set) var settingsMessage: String?
     @Published private(set) var powerEnabled = true
     @Published private(set) var motionEnabled = false
+    @Published private(set) var lidEnabled = false
+    @Published private(set) var networkEnabled = false
     @Published private(set) var liveMotionScore: Double?
     @Published private(set) var isCalibrating = false
     /// Shown in the main panel, not buried in settings: a configuration that
@@ -37,8 +39,12 @@ final class AppModel: ObservableObject {
     private let screenLock: ScreenLockResponse
     private let powerTrigger: PowerTrigger
     private let motionTrigger: MotionTrigger
+    private let lidTrigger: LidAngleTrigger
+    private let networkTrigger: NetworkTrigger
     /// One list so a per-trigger setting cannot reach some triggers and not others.
-    private var allTriggers: [any Trigger] { [powerTrigger, motionTrigger] }
+    private var allTriggers: [any Trigger] {
+        [powerTrigger, motionTrigger, lidTrigger, networkTrigger]
+    }
 
     /// Recomputed whenever anything that affects coverage changes.
     private func refreshProtectionWarning() {
@@ -61,6 +67,12 @@ final class AppModel: ObservableObject {
             detector: EgoMotionDetector(threshold: preferences.motionThreshold),
             graceSeconds: preferences.graceSeconds)
         self.motionTrigger = motion
+        let lid = LidAngleTrigger(sensor: HIDLidAngleSensor(),
+                                  graceSeconds: preferences.graceSeconds)
+        self.lidTrigger = lid
+        let network = NetworkTrigger(monitor: WiFiLinkMonitor(),
+                                     graceSeconds: preferences.graceSeconds)
+        self.networkTrigger = network
         let siren = SirenResponse(player: AVSirenPlayer(),
                                   audio: CoreAudioOutputControl())
         self.siren = siren
@@ -71,7 +83,7 @@ final class AppModel: ObservableObject {
         let lock = ScreenLockResponse(locker: LoginFrameworkScreenLocker())
         self.screenLock = lock
 
-        engine = AlarmEngine(triggers: [trigger, motion],
+        engine = AlarmEngine(triggers: [trigger, motion, lid, network],
                              responses: [siren, lock],
                              clock: SystemClock(),
                              passcodes: passcodes,
@@ -105,8 +117,16 @@ final class AppModel: ObservableObject {
         // else defaults on; this one requires a deliberate decision.
         motion.isEnabled = motion.isAvailable
             && preferences.isEnabled(motion.identifier, default: false)
+        // Lid and network default OFF like motion: both can fire in ordinary
+        // use — closing your own laptop, walking out of Wi-Fi range — so they
+        // are a deliberate choice rather than something to discover by accident.
+        lid.isEnabled = lid.isAvailable && preferences.isEnabled(lid.identifier, default: false)
+        network.isEnabled = network.isAvailable
+            && preferences.isEnabled(network.identifier, default: false)
         motionEnabled = motion.isActive
         powerEnabled = trigger.isActive
+        lidEnabled = lid.isActive
+        networkEnabled = network.isActive
         motionSensitivity = MotionSensitivity.sensitivity(forThreshold: preferences.motionThreshold)
         refreshProtectionWarning()
         sirenEnabled = siren.isActive
@@ -164,7 +184,7 @@ final class AppModel: ObservableObject {
     /// Three different reasons arming can be refused, and telling the user the
     /// wrong one is worse than saying nothing.
     private var armRefusalReason: String {
-        if !powerEnabled && !motionEnabled {
+        if !powerEnabled && !motionEnabled && !lidEnabled && !networkEnabled {
             return "Turn on at least one trigger in Settings — nothing is set to watch for anything."
         }
         if powerEnabled && !powerTrigger.canFireNow {
@@ -200,6 +220,27 @@ final class AppModel: ObservableObject {
     }
 
     var motionAvailable: Bool { motionTrigger.isAvailable }
+
+    var lidAvailable: Bool { lidTrigger.isAvailable }
+    var networkAvailable: Bool { networkTrigger.isAvailable }
+
+    func setLidEnabled(_ enabled: Bool) {
+        guard !settingsLocked else { return }
+        let applied = enabled && lidTrigger.isAvailable
+        lidTrigger.isEnabled = applied
+        preferences.setEnabled(applied, for: lidTrigger.identifier)
+        lidEnabled = lidTrigger.isActive
+        refreshProtectionWarning()
+    }
+
+    func setNetworkEnabled(_ enabled: Bool) {
+        guard !settingsLocked else { return }
+        let applied = enabled && networkTrigger.isAvailable
+        networkTrigger.isEnabled = applied
+        preferences.setEnabled(applied, for: networkTrigger.identifier)
+        networkEnabled = networkTrigger.isActive
+        refreshProtectionWarning()
+    }
 
     func setPowerEnabled(_ enabled: Bool) {
         guard !settingsLocked else { return }
