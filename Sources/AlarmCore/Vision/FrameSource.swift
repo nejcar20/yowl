@@ -44,7 +44,18 @@ public final class CameraFrameSource: NSObject, FrameSourcing, StillCapturing,
     /// aborts the process on the first real frame. A lock rather than a
     /// suppression: this state genuinely is shared across threads, and saying
     /// so is the point.
-    private struct CaptureState {
+    /// Resets only the per-session fields. Extracted so a test can reach it:
+    /// assigning a whole fresh `CaptureState` here silently wiped
+    /// `retainStills` through the memberwise init's defaults, and `start()`
+    /// throws before this point without a camera, so nothing could catch it.
+    nonisolated static func resetForNewSession(_ state: inout CaptureState) {
+        state.lastDelivery = .distantPast
+        state.isRunning = true
+        state.buffer.removeAll()
+        state.latestStill = nil
+    }
+
+    nonisolated struct CaptureState {
         var lastDelivery = Date.distantPast
         var isRunning = false
         /// Retained only while evidence capture is switched on. The video output
@@ -135,12 +146,7 @@ public final class CameraFrameSource: NSObject, FrameSourcing, StillCapturing,
         // here silently wiped `retainStills` through the memberwise init's
         // defaults, so evidence capture was switched off on every start and no
         // photograph was ever taken.
-        captureState.withLock {
-            $0.lastDelivery = .distantPast
-            $0.isRunning = true
-            $0.buffer.removeAll()
-            $0.latestStill = nil
-        }
+        captureState.withLock { Self.resetForNewSession(&$0) }
 
         session.beginConfiguration()
         // Motion downscales to 320x240 by sampling, so a higher preset costs it

@@ -136,3 +136,33 @@ private func makeEngine(triggers: [any Trigger], responses: [any Response],
     #expect(engine.failedTriggers == ["motion"])
 }
 
+
+// A response the user configures AFTER launch must still fire. `isAvailable` is
+// filtered once at construction, so a response reporting itself unavailable
+// merely because it was not yet configured got dropped permanently — alerts
+// enabled later never fired for a real alarm, while a test button that bypassed
+// the engine reported success.
+@Test func aResponseEnabledAfterConstructionStillFires() async throws {
+    let trigger = FakeTrigger(id: TriggerID("power"))
+    let alert = FakeResponse(identifier: "alert", isAvailable: true)
+    alert.isEnabled = false     // not yet configured, as at first launch
+    let engine = makeEngine(triggers: [trigger], responses: [alert])
+
+    alert.isEnabled = true      // the user sets it up
+    try engine.arm()
+    trigger.simulateFire()
+    await Task.yield(); await Task.yield()
+    #expect(alert.fireCount == 1, "the engine must not have dropped it at construction")
+}
+
+// The converse: something genuinely unavailable in this build stays dropped.
+@Test func anUnavailableResponseIsStillDroppedAtConstruction() async throws {
+    let trigger = FakeTrigger(id: TriggerID("power"))
+    let unavailable = FakeResponse(identifier: "screen-lock", isAvailable: false)
+    let engine = makeEngine(triggers: [trigger], responses: [unavailable])
+    unavailable.isEnabled = true
+    try engine.arm()
+    trigger.simulateFire()
+    await Task.yield(); await Task.yield()
+    #expect(unavailable.fireCount == 0)
+}
