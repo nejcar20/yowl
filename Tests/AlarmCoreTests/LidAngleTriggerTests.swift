@@ -68,14 +68,20 @@ private func makeTrigger(_ sensor: FakeLidAngleSensor,
     #expect(fireCount == 1)
 }
 
-@Test func stoppingPreventsTheLidTriggerFiring() throws {
+// Observes the trigger, not the fake: the handler is invoked directly so the
+// fake's own `isReading` cannot make this pass for free. Deleting
+// `onFire = nil` from stop() must fail it.
+@Test func stoppingClearsTheTriggersOwnHandler() throws {
     let sensor = FakeLidAngleSensor(angle: 110)
-    let trigger = makeTrigger(sensor)
+    let trigger = makeTrigger(sensor, closingBy: 30)
     var fired: TriggerID?
     try trigger.start { fired = $0 }
     trigger.stop()
-    sensor.simulate(angle: 60)
-    #expect(fired == nil)
+    // Delivery is asynchronous, so a callback can already be in flight when the
+    // user disarms. 40 degrees is 70 below the 110 baseline: if stop() left that
+    // baseline in place, this fires the alarm after the user disarmed.
+    sensor.simulateCallbackInFlight(angle: 40)
+    #expect(fired == nil, "a callback in flight at stop() must not fire the alarm")
     #expect(sensor.isReading == false)
 }
 
@@ -116,13 +122,38 @@ private func makeTrigger(_ sensor: FakeLidAngleSensor,
     #expect(fired == TriggerID("lid"), "one bad sample must not stop monitoring")
 }
 
-// Arming was permitted in a band where the fire threshold sat below the angle at
-// which the lid is already shut — so the alarm could only fire after clamshell
-// sleep had begun, which is the latency this trigger exists to avoid.
-@Test func aLidTooShallowToFireBeforeShuttingCannotArm() {
-    // shutAngle 5 + threshold 8 = 13: at 12 there is no room to fire in time.
-    #expect(makeTrigger(FakeLidAngleSensor(angle: 12), closingBy: 8).canFireNow == false)
-    #expect(makeTrigger(FakeLidAngleSensor(angle: 20), closingBy: 8).canFireNow == true)
+// Arming must leave room to fire while the lid is still usefully open. Gating
+// only on "not already shut" armed the trigger at angles where it could fire
+// only once the lid had all but closed — by which point clamshell sleep has
+// begun, which is the latency this trigger exists to avoid.
+@Test func aLidTooShallowToGiveAWarningCannotArm() {
+    // Firing must leave the lid at least 30 degrees open, so with a 30-degree
+    // threshold the lid must start at 60 or more.
+    #expect(makeTrigger(FakeLidAngleSensor(angle: 45), closingBy: 30).canFireNow == false)
+    #expect(makeTrigger(FakeLidAngleSensor(angle: 59), closingBy: 30).canFireNow == false)
+    #expect(makeTrigger(FakeLidAngleSensor(angle: 60), closingBy: 30).canFireNow == true)
+    #expect(makeTrigger(FakeLidAngleSensor(angle: 110), closingBy: 30).canFireNow == true)
+}
+
+// A recovered reading taken mid-close must not become the baseline: that would
+// silently make the trigger unfirable while it still reported armed.
+@Test func aRecoveredReadingTakenMidCloseIsNotAdoptedAsTheBaseline() throws {
+    let sensor = FakeLidAngleSensor(angle: nil)
+    let trigger = makeTrigger(sensor, closingBy: 30)
+    var fired: TriggerID?
+    try trigger.start { fired = $0 }
+    sensor.simulate(angle: 40)    // too shallow to be a useful baseline
+    sensor.simulate(angle: 100)   // a proper one arrives
+    sensor.simulate(angle: 69)    // 31 degrees of closing from 100
+    #expect(fired == TriggerID("lid"))
+}
+
+// The shipped default was never constructed by any test: `makeTrigger` always
+// passed an explicit value, so 30 could have been 3 and the suite stayed green.
+@Test func theShippedClosingThresholdIsThirtyDegrees() {
+    let trigger = LidAngleTrigger(sensor: FakeLidAngleSensor(angle: 110), graceSeconds: 0)
+    #expect(trigger.closingByDegrees == 30)
+    #expect(trigger.isEnabled == false, "must be opt-in: closing your own lid is ordinary")
 }
 
 @Test func canFireNowIsFalseWhenTheAngleCannotBeRead() {
@@ -161,19 +192,3 @@ private func makeTrigger(_ sensor: FakeLidAngleSensor,
     #expect(strictFired == true)
 }
 
-// Pins the trigger's own teardown rather than the fake's: deleting the baseline
-// and handler reset from stop() must fail this.
-@Test func stoppingClearsTheBaselineSoTheNextArmRebaselines() throws {
-    let sensor = FakeLidAngleSensor(angle: 110)
-    let trigger = makeTrigger(sensor, closingBy: 30)
-    var fireCount = 0
-    try trigger.start { _ in fireCount += 1 }
-    trigger.stop()
-
-    // Re-arm at a much shallower angle. If stop() left the 110 baseline behind,
-    // this arms against it and fires immediately on the first sample.
-    sensor.simulate(angle: 60)
-    try trigger.start { _ in fireCount += 1 }
-    sensor.simulate(angle: 55)
-    #expect(fireCount == 0, "the new baseline must be 60, not the stale 110")
-}

@@ -28,9 +28,6 @@ public enum ProtectionStatus: Equatable {
     }
 
     /// Nil only when the configuration can genuinely protect the machine.
-    /// True only when the configuration can genuinely protect the machine.
-    public var isProtected: Bool { self == .protected }
-
     public var warning: String? {
         switch self {
         case .protected:
@@ -38,7 +35,7 @@ public enum ProtectionStatus: Equatable {
         case .nothingEnabled:
             return "Nothing is watching. Turn on a trigger in Settings, or this will not catch a theft."
         case .nothingCanFireNow:
-            return "Every trigger you have on has nothing left to detect right now — the charger already unplugged, the lid already shut, or Wi-Fi already off."
+            return "Nothing can fire right now: the charger is already unplugged, or the lid is already too far closed to give a useful warning."
         }
     }
 }

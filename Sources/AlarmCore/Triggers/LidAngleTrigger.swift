@@ -33,6 +33,11 @@ public final class LidAngleTrigger: Trigger {
     /// Below this the lid is effectively already shut and cannot close further.
     static let shutAngle = 5.0
 
+    /// The lid must still be this far open when the alarm fires, or the head
+    /// start is gone: firing at 15 degrees means the siren starts as the lid
+    /// touches, by which point clamshell sleep is already under way.
+    static let minimumFiringAngle = 30.0
+
     private let sensor: LidAngleSensing
     private var baseline: Double?
     private var onFire: ((TriggerID) -> Void)?
@@ -52,7 +57,14 @@ public final class LidAngleTrigger: Trigger {
     /// exactly the latency this trigger exists to avoid.
     public var canFireNow: Bool {
         guard sensor.isAvailable, let angle = sensor.angle else { return false }
-        return angle > Self.shutAngle + closingByDegrees
+        return angle >= minimumArmingAngle
+    }
+
+    /// Arming below this leaves no room to fire while the lid is still usefully
+    /// open. Refusing is honest: a laptop already at 45 degrees cannot give the
+    /// warning this trigger promises.
+    public var minimumArmingAngle: Double {
+        Self.minimumFiringAngle + closingByDegrees
     }
 
     public func start(onFire: @escaping (TriggerID) -> Void) throws {
@@ -66,7 +78,10 @@ public final class LidAngleTrigger: Trigger {
             // Leaving the baseline nil made the trigger deaf for the whole
             // session while the UI still said "Armed".
             guard let baseline = self.baseline else {
-                self.baseline = angle
+                // Adopt a recovered reading only if it still leaves room to
+                // fire usefully; adopting one taken mid-close would set the
+                // baseline part-closed and quietly make the trigger unfirable.
+                if angle >= self.minimumArmingAngle { self.baseline = angle }
                 return
             }
             guard baseline - angle >= self.closingByDegrees else { return }
@@ -76,6 +91,10 @@ public final class LidAngleTrigger: Trigger {
 
     public func stop() {
         sensor.stopReading()
+        // Clearing the baseline is what actually prevents a callback still in
+        // flight from firing after the user disarmed, and it is pinned by a
+        // test. Releasing the handler is redundant for safety and kept only so
+        // a stopped trigger does not retain its caller's closure.
         baseline = nil
         onFire = nil
     }

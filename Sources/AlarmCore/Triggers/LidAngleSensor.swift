@@ -28,6 +28,13 @@ public final class HIDLidAngleSensor: LidAngleSensing {
     private var device: IOHIDDevice?
     private var angleElement: IOHIDElement?
     private var pollTask: Task<Void, Never>?
+    private var consecutiveFailures = 0
+
+    /// After this many failed reads the cached device handle is assumed stale —
+    /// it goes that way across sleep and HID re-enumeration — and reopened. Not
+    /// reopening turned a loud death into a quiet one: the loop kept spinning
+    /// and returning nil while `isAvailable` still claimed the sensor was there.
+    static let failuresBeforeReopen = 20
 
     public init() { openDevice() }
 
@@ -48,6 +55,15 @@ public final class HIDLidAngleSensor: LidAngleSensing {
         self.manager = manager
         self.device = device
         self.angleElement = elements.first { IOHIDElementGetUsage($0) == UInt32(Self.angleUsage) }
+    }
+
+    /// Re-acquires the HID handles after they go stale.
+    private func reopenDevice() {
+        if let manager { IOHIDManagerClose(manager, IOOptionBits(kIOHIDOptionsTypeNone)) }
+        manager = nil
+        device = nil
+        angleElement = nil
+        openDevice()
     }
 
     public var isAvailable: Bool { angleElement != nil }
@@ -81,7 +97,17 @@ public final class HIDLidAngleSensor: LidAngleSensing {
                 // sleep and HID re-enumeration. Exiting here left lid monitoring
                 // permanently dead with no error and no way to restart it.
                 guard let self else { return }
-                onAngle(self.angle)
+                let reading = self.angle
+                if reading == nil {
+                    self.consecutiveFailures += 1
+                    if self.consecutiveFailures >= Self.failuresBeforeReopen {
+                        self.consecutiveFailures = 0
+                        self.reopenDevice()
+                    }
+                } else {
+                    self.consecutiveFailures = 0
+                }
+                onAngle(reading)
                 try? await Task.sleep(for: .milliseconds(100))
             }
         }
@@ -101,6 +127,12 @@ public final class FakeLidAngleSensor: LidAngleSensing {
     public private(set) var angle: Double?
     public private(set) var isReading = false
     private var onAngle: ((Double?) -> Void)?
+    /// Retained past `stopReading` so a test can deliver a callback that was
+    /// already in flight when the trigger stopped — a real ordering, since
+    /// delivery is asynchronous, and the only way to observe that `stop()`
+    /// clears the trigger's own handler rather than relying on the sensor
+    /// having gone quiet.
+    private var lastHandler: ((Double?) -> Void)?
 
     /// `angle` is optional so tests can exercise a failed read — the path that
     /// hid two silent-death bugs because it could not be constructed.
@@ -116,6 +148,7 @@ public final class FakeLidAngleSensor: LidAngleSensing {
 
     public func startReading(_ onAngle: @escaping (Double?) -> Void) {
         self.onAngle = onAngle
+        self.lastHandler = onAngle
         isReading = true
     }
 
@@ -127,6 +160,14 @@ public final class FakeLidAngleSensor: LidAngleSensing {
     public func simulate(angle: Double) {
         self.angle = angle
         onAngle?(angle)
+    }
+
+    /// Delivers to the handler retained from the last `startReading`, even after
+    /// `stopReading`, modelling a callback already in flight when the trigger
+    /// was stopped.
+    public func simulateCallbackInFlight(angle: Double) {
+        self.angle = angle
+        lastHandler?(angle)
     }
 }
 #endif

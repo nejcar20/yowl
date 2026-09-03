@@ -24,7 +24,6 @@ final class AppModel: ObservableObject {
     @Published private(set) var powerEnabled = true
     @Published private(set) var motionEnabled = false
     @Published private(set) var lidEnabled = false
-    @Published private(set) var networkEnabled = false
     @Published private(set) var liveMotionScore: Double?
     @Published private(set) var isCalibrating = false
     /// Shown in the main panel, not buried in settings: a configuration that
@@ -44,10 +43,9 @@ final class AppModel: ObservableObject {
     private let powerTrigger: PowerTrigger
     private let motionTrigger: MotionTrigger
     private let lidTrigger: LidAngleTrigger
-    private let networkTrigger: NetworkTrigger
     /// One list so a per-trigger setting cannot reach some triggers and not others.
     private var allTriggers: [any Trigger] {
-        [powerTrigger, motionTrigger, lidTrigger, networkTrigger]
+        [powerTrigger, motionTrigger, lidTrigger]
     }
 
     /// Recomputed whenever anything that affects coverage changes.
@@ -77,10 +75,6 @@ final class AppModel: ObservableObject {
                                   graceSeconds: preferences.graceSeconds)
         self.lidTrigger = lid
         let clock = SystemClock()
-        let network = NetworkTrigger(monitor: WiFiLinkMonitor(),
-                                     clock: clock,
-                                     graceSeconds: preferences.graceSeconds)
-        self.networkTrigger = network
         let siren = SirenResponse(player: AVSirenPlayer(),
                                   audio: CoreAudioOutputControl())
         self.siren = siren
@@ -91,7 +85,7 @@ final class AppModel: ObservableObject {
         let lock = ScreenLockResponse(locker: LoginFrameworkScreenLocker())
         self.screenLock = lock
 
-        engine = AlarmEngine(triggers: [trigger, motion, lid, network],
+        engine = AlarmEngine(triggers: [trigger, motion, lid],
                              responses: [siren, lock],
                              clock: clock,
                              passcodes: passcodes,
@@ -129,12 +123,9 @@ final class AppModel: ObservableObject {
         // use — closing your own laptop, walking out of Wi-Fi range — so they
         // are a deliberate choice rather than something to discover by accident.
         lid.isEnabled = lid.isAvailable && preferences.isEnabled(lid.identifier, default: false)
-        network.isEnabled = network.isAvailable
-            && preferences.isEnabled(network.identifier, default: false)
         motionEnabled = motion.isActive
         powerEnabled = trigger.isActive
         lidEnabled = lid.isActive
-        networkEnabled = network.isActive
         motionSensitivity = MotionSensitivity.sensitivity(forThreshold: preferences.motionThreshold)
         refreshProtectionWarning()
         sirenEnabled = siren.isActive
@@ -225,7 +216,6 @@ final class AppModel: ObservableObject {
     var motionAvailable: Bool { motionTrigger.isAvailable }
 
     var lidAvailable: Bool { lidTrigger.isAvailable }
-    var networkAvailable: Bool { networkTrigger.isAvailable }
 
     func setLidEnabled(_ enabled: Bool) {
         guard !settingsLocked else { return }
@@ -236,14 +226,6 @@ final class AppModel: ObservableObject {
         refreshProtectionWarning()
     }
 
-    func setNetworkEnabled(_ enabled: Bool) {
-        guard !settingsLocked else { return }
-        let applied = enabled && networkTrigger.isAvailable
-        networkTrigger.isEnabled = applied
-        preferences.setEnabled(applied, for: networkTrigger.identifier)
-        networkEnabled = networkTrigger.isActive
-        refreshProtectionWarning()
-    }
 
     func setPowerEnabled(_ enabled: Bool) {
         guard !settingsLocked else { return }

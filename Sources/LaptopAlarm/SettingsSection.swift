@@ -29,11 +29,6 @@ struct SettingsSection: View {
                             get: { model.lidEnabled },
                             set: { model.setLidEnabled($0) }))
                     }
-                    if model.networkAvailable {
-                        Toggle("Wi-Fi is lost for 30 seconds", isOn: Binding(
-                            get: { model.networkEnabled },
-                            set: { model.setNetworkEnabled($0) }))
-                    }
                     if model.motionAvailable {
                         Toggle("Laptop is moved (uses the camera)", isOn: Binding(
                             get: { model.motionEnabled },
