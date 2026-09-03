@@ -1,4 +1,5 @@
 import SwiftUI
+import AlarmApp
 
 /// Owns the `AppModel` so `applicationWillTerminate` is guaranteed to have it.
 ///

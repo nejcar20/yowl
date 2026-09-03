@@ -1,10 +1,12 @@
 import SwiftUI
 import AlarmCore
 
-struct MenuBarContent: View {
+public struct MenuBarContent: View {
     @ObservedObject var model: AppModel
 
-    var body: some View {
+    public init(model: AppModel) { self.model = model }
+
+    public var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(statusText).font(.headline)
 
@@ -76,9 +78,11 @@ struct MenuBarContent: View {
 
 struct PasscodeSetupField: View {
     @ObservedObject var model: AppModel
+
+    public init(model: AppModel) { self.model = model }
     @State private var entry = ""
 
-    var body: some View {
+    public var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text("Choose a passcode to disarm the alarm.")
                 .font(.caption).foregroundStyle(.secondary)
