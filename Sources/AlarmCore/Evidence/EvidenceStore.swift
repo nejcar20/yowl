@@ -27,8 +27,10 @@ public protocol EvidenceStoring: AnyObject {
 /// that took them unless the user explicitly sets up somewhere to send them.
 public final class FileEvidenceStore: EvidenceStoring {
     private let directory: URL
+    private let keepingMostRecent: Int
 
-    public init(directory: URL? = nil) {
+    public init(directory: URL? = nil, keepingMostRecent: Int = 40) {
+        self.keepingMostRecent = max(1, keepingMostRecent)
         self.directory = directory ?? FileManager.default
             .urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("LaptopAlarm/Evidence", isDirectory: true)
@@ -45,6 +47,7 @@ public final class FileEvidenceStore: EvidenceStoring {
         let url = directory.appendingPathComponent("\(stamp)-\(item.trigger).jpg")
         do {
             try item.jpeg.write(to: url, options: .atomic)
+            prune()
             return url
         } catch {
             return nil
@@ -58,17 +61,35 @@ public final class FileEvidenceStore: EvidenceStoring {
             .sorted { $0.lastPathComponent > $1.lastPathComponent } ?? []
     }
 
+    /// Keeps the newest and deletes the rest. Evidence accumulates every time
+    /// the alarm fires, and most of those will be the owner tripping their own
+    /// alarm, so leaving it unbounded fills the disk with pictures of them.
+    private func prune() {
+        let items = allItems()
+        guard items.count > keepingMostRecent else { return }
+        for url in items.dropFirst(keepingMostRecent) {
+            try? FileManager.default.removeItem(at: url)
+        }
+    }
+
     public var directoryURL: URL { directory }
 }
 
 #if DEBUG
 public final class InMemoryEvidenceStore: EvidenceStoring {
     public private(set) var saved: [EvidenceItem] = []
-    public init() {}
+    private let keepingMostRecent: Int
+
+    public init(keepingMostRecent: Int = 40) {
+        self.keepingMostRecent = max(1, keepingMostRecent)
+    }
 
     @discardableResult
     public func save(_ item: EvidenceItem) -> URL? {
         saved.append(item)
+        if saved.count > keepingMostRecent {
+            saved.removeFirst(saved.count - keepingMostRecent)
+        }
         return URL(string: "memory://\(saved.count)")
     }
 

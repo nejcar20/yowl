@@ -54,6 +54,12 @@ public final class CameraFrameSource: NSObject, FrameSourcing, StillCapturing,
         /// session, and nothing to warm up.
         var retainStills = false
         var latestStill: Data?
+        /// The run-up: recent frames, oldest first, so the alarm can save the
+        /// moments *before* it fired. Sampled at about 1 Hz rather than every
+        /// frame — a photograph every 200 ms of the same approaching face is
+        /// bandwidth without information.
+        var buffer: [TimestampedStill] = []
+        var lastBuffered = Date.distantPast
     }
     private let captureState = OSAllocatedUnfairLock(initialState: CaptureState())
     private nonisolated let minimumInterval: TimeInterval
@@ -88,13 +94,29 @@ public final class CameraFrameSource: NSObject, FrameSourcing, StillCapturing,
         isCalibrationRate.withLock { $0 = high }
     }
 
+    /// How many seconds of run-up to keep. Ten seconds at 1 Hz is roughly
+    /// 2-4 MB of JPEG and covers someone walking up to the machine.
+    public nonisolated static let bufferedStillCount = 10
+    private nonisolated static let bufferInterval: TimeInterval = 1
+
     /// Turning this on makes the source keep the most recent full-resolution
-    /// frame so `captureStill()` can return it.
+    /// frame, and a short history before it.
     public func setRetainsStills(_ retain: Bool) {
         captureState.withLock {
             $0.retainStills = retain
-            if !retain { $0.latestStill = nil }
+            if !retain {
+                $0.latestStill = nil
+                $0.buffer.removeAll()
+            }
         }
+    }
+
+    public func bufferedStills() -> [TimestampedStill] {
+        captureState.withLock { $0.buffer }
+    }
+
+    public func clearBufferedStills() {
+        captureState.withLock { $0.buffer.removeAll() }
     }
 
     public func start(onFrame: @escaping (GrayscaleFrame) -> Void) throws {
@@ -169,7 +191,16 @@ public final class CameraFrameSource: NSObject, FrameSourcing, StillCapturing,
         guard shouldDeliver else { return }
         if captureState.withLock({ $0.retainStills }),
            let jpeg = Self.jpeg(from: sampleBuffer) {
-            captureState.withLock { $0.latestStill = jpeg }
+            captureState.withLock { state in
+                state.latestStill = jpeg
+                guard now.timeIntervalSince(state.lastBuffered) >= Self.bufferInterval
+                else { return }
+                state.lastBuffered = now
+                state.buffer.append(TimestampedStill(jpeg: jpeg, capturedAt: now))
+                if state.buffer.count > Self.bufferedStillCount {
+                    state.buffer.removeFirst(state.buffer.count - Self.bufferedStillCount)
+                }
+            }
         }
         guard let frame = Self.grayscaleFrame(from: sampleBuffer,
                                               width: targetWidth, height: targetHeight)

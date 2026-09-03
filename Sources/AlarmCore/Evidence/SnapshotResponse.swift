@@ -1,10 +1,32 @@
 import Foundation
 
+/// A JPEG with the moment it was taken.
+///
+/// Explicitly `nonisolated`: these are built on the camera's capture queue, and
+/// the package is main-actor isolated by default, which would otherwise put the
+/// initialiser out of reach there — the same reason `GrayscaleFrame` is.
+nonisolated public struct TimestampedStill: Equatable, Sendable {
+    public let jpeg: Data
+    public let capturedAt: Date
+    public init(jpeg: Data, capturedAt: Date) {
+        self.jpeg = jpeg
+        self.capturedAt = capturedAt
+    }
+}
+
 /// Something that can produce a still image from the camera.
 public protocol StillCapturing: AnyObject {
     var isAvailable: Bool { get }
     /// The most recent frame as JPEG, or nil if none is available.
     func captureStill() -> Data?
+    /// Frames from the seconds *before* now, oldest first. The most useful
+    /// photograph is often from before the alarm fired — the thief approaching
+    /// and looking at the machine, rather than the back of their head as they
+    /// leave — and the camera is already running, so this costs memory only.
+    func bufferedStills() -> [TimestampedStill]
+    /// Drops what is buffered, so a second alarm does not re-save the moments
+    /// before the first one.
+    func clearBufferedStills()
 }
 
 /// Photographs whoever is in front of the machine when the alarm fires.
@@ -40,6 +62,13 @@ public final class SnapshotResponse: Response {
 
     public func fire(context: AlarmContext) async {
         cancelPending()
+        // The run-up first, oldest to newest, then the moment itself.
+        for still in camera.bufferedStills() {
+            store.save(EvidenceItem(jpeg: still.jpeg,
+                                    capturedAt: still.capturedAt,
+                                    trigger: context.trigger.rawValue))
+        }
+        camera.clearBufferedStills()
         capture(context: context)
         guard shotCount > 1, interval > 0 else { return }
         for shot in 1..<shotCount {
@@ -57,8 +86,11 @@ public final class SnapshotResponse: Response {
 
     private func capture(context: AlarmContext) {
         guard let jpeg = camera.captureStill() else { return }
+        // The time of THIS shot, not of the trigger. Sharing the trigger's
+        // timestamp gave every shot the same filename, so each overwrote the
+        // last and two thirds of the evidence was silently lost.
         store.save(EvidenceItem(jpeg: jpeg,
-                                capturedAt: context.firedAt,
+                                capturedAt: clock.now,
                                 trigger: context.trigger.rawValue))
     }
 
@@ -72,7 +104,9 @@ public final class SnapshotResponse: Response {
 public final class FakeStillCapture: StillCapturing {
     public var available = true
     public var stillToReturn: Data? = Data([0xFF, 0xD8, 0xFF, 0xE0])   // JPEG magic
+    public var buffered: [TimestampedStill] = []
     public private(set) var captureCount = 0
+    public private(set) var clearCount = 0
 
     public init() {}
 
@@ -81,6 +115,13 @@ public final class FakeStillCapture: StillCapturing {
     public func captureStill() -> Data? {
         captureCount += 1
         return stillToReturn
+    }
+
+    public func bufferedStills() -> [TimestampedStill] { buffered }
+
+    public func clearBufferedStills() {
+        buffered = []
+        clearCount += 1
     }
 }
 #endif

@@ -75,11 +75,15 @@ private func makeResponse(_ camera: FakeStillCapture, _ store: InMemoryEvidenceS
 }
 
 // Evidence is useless without knowing when it was taken and what set it off.
+// The timestamp is the moment of the SHOT, not of the trigger: they differ for
+// every shot after the first, and using the trigger's time gave them all one
+// filename.
 @Test func savedEvidenceCarriesItsContext() async {
     let camera = FakeStillCapture()
     let store = InMemoryEvidenceStore()
+    let clock = TestClock(now: Date(timeIntervalSince1970: 1_000_000))
     let response = SnapshotResponse(camera: camera, store: store, shotCount: 1,
-                                    interval: 0, clock: TestClock())
+                                    interval: 0, clock: clock)
     await response.fire(context: context)
     let item = try? #require(store.saved.first)
     #expect(item?.capturedAt == Date(timeIntervalSince1970: 1_000_000))
