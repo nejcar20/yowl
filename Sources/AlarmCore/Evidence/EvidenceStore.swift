@@ -18,6 +18,8 @@ public protocol EvidenceStoring: AnyObject {
     @discardableResult
     func save(_ item: EvidenceItem) -> URL?
     func allItems() -> [URL]
+    /// The newest photographs, for an alert to attach.
+    func recentJPEGs(limit: Int) -> [Data]
 }
 
 /// Writes evidence to Application Support, one JPEG per shot.
@@ -72,6 +74,10 @@ public final class FileEvidenceStore: EvidenceStoring {
         }
     }
 
+    public func recentJPEGs(limit: Int) -> [Data] {
+        allItems().prefix(limit).compactMap { try? Data(contentsOf: $0) }
+    }
+
     public var directoryURL: URL { directory }
 }
 
@@ -94,5 +100,9 @@ public final class InMemoryEvidenceStore: EvidenceStoring {
     }
 
     public func allItems() -> [URL] { saved.indices.map { URL(string: "memory://\($0)")! } }
+
+    public func recentJPEGs(limit: Int) -> [Data] {
+        saved.suffix(limit).map(\.jpeg)
+    }
 }
 #endif

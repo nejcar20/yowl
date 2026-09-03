@@ -112,6 +112,27 @@ struct SettingsSection: View {
 
                 Divider()
 
+                Group {
+                    Toggle("Send an alert to my phone", isOn: Binding(
+                        get: { model.alertEnabled },
+                        set: { model.setAlertEnabled($0) }))
+                    if model.alertEnabled {
+                        Text("Sent through ntfy.sh, including any photos. Install the free ntfy app and subscribe to your private link.")
+                            .font(.caption2).foregroundStyle(.secondary)
+                        HStack {
+                            Button("Copy my link") { model.copyAlertLink() }
+                            Button("Send test") { model.sendTestAlert() }
+                        }
+                        .font(.caption2)
+                        Text("Keep the link private — anyone who has it can see your alerts and photos. Photos are deleted from ntfy after a few hours; the copies on this Mac are the ones that last.")
+                            .font(.caption2).foregroundStyle(.secondary)
+                        Button("Create a new link") { model.regenerateAlertTopic() }
+                            .font(.caption2)
+                    }
+                }
+
+                Divider()
+
                 Toggle("Start at login", isOn: Binding(
                     get: { model.launchAtLogin },
                     set: { model.setLaunchAtLogin($0) }))

@@ -24,6 +24,8 @@ final class AppModel: ObservableObject {
     @Published private(set) var powerEnabled = true
     @Published private(set) var motionEnabled = false
     @Published private(set) var snapshotEnabled = false
+    @Published private(set) var alertEnabled = false
+    @Published private(set) var alertTopic = ""
     @Published private(set) var lidEnabled = false
     @Published private(set) var liveMotionScore: Double?
     @Published private(set) var isCalibrating = false
@@ -46,6 +48,8 @@ final class AppModel: ObservableObject {
     private let snapshotResponse: SnapshotResponse
     private let camera: CameraFrameSource
     private let evidenceStore: FileEvidenceStore
+    private let alertResponse: AlertResponse
+    private let topicStore: KeychainTopicStore
     private let lidTrigger: LidAngleTrigger
     /// One list so a per-trigger setting cannot reach some triggers and not others.
     private var allTriggers: [any Trigger] {
@@ -97,10 +101,17 @@ final class AppModel: ObservableObject {
         self.evidenceStore = evidenceStore
         let snapshot = SnapshotResponse(camera: camera, store: evidenceStore, clock: clock)
         self.snapshotResponse = snapshot
+        let topicStore = KeychainTopicStore()
+        self.topicStore = topicStore
+        let alert = AlertResponse(
+            transport: NtfyTransport(topic: topicStore.topic ?? "",
+                                     http: URLSessionHTTPClient()),
+            evidence: evidenceStore)
+        self.alertResponse = alert
         self.screenLock = lock
 
         engine = AlarmEngine(triggers: [trigger, motion, lid],
-                             responses: [siren, lock, snapshot],
+                             responses: [siren, lock, snapshot, alert],
                              clock: clock,
                              passcodes: passcodes,
                              sleepAssertion: IOKitSleepAssertion())
@@ -141,6 +152,10 @@ final class AppModel: ObservableObject {
             && preferences.isEnabled(snapshot.identifier, default: false)
         camera.setRetainsStills(snapshot.isEnabled)
         snapshotEnabled = snapshot.isActive
+        alert.isEnabled = alert.isAvailable
+            && preferences.isEnabled(alert.identifier, default: false)
+        alertEnabled = alert.isActive
+        alertTopic = topicStore.topic ?? ""
         motionEnabled = motion.isActive
         powerEnabled = trigger.isActive
         lidEnabled = lid.isActive
@@ -257,6 +272,65 @@ final class AppModel: ObservableObject {
             self.camera.setRetainsStills(applied)
             self.settingsMessage = applied ? nil
                 : "LaptopAlarm needs camera access to photograph a thief. Grant it in System Settings ▸ Privacy & Security ▸ Camera."
+        }
+    }
+
+    var alertAvailable: Bool { true }
+
+    /// The URL a phone subscribes to. Shown once, for pairing, and treated as a
+    /// secret everywhere else: anyone holding it can read the photographs.
+    var alertSubscribeURL: String {
+        alertTopic.isEmpty ? "" : "https://ntfy.sh/\(alertTopic)"
+    }
+
+    func setAlertEnabled(_ enabled: Bool) {
+        guard !settingsLocked else { return }
+        guard enabled else {
+            alertResponse.isEnabled = false
+            preferences.setEnabled(false, for: alertResponse.identifier)
+            alertEnabled = false
+            return
+        }
+        // Creating the topic on first enable, not at launch, so a user who never
+        // turns this on never has one.
+        let topic = topicStore.topicCreatingIfNeeded()
+        alertTopic = topic
+        rebuildAlertTransport()
+        alertResponse.isEnabled = alertResponse.isAvailable
+        preferences.setEnabled(alertResponse.isEnabled, for: alertResponse.identifier)
+        alertEnabled = alertResponse.isActive
+    }
+
+    /// Replaces the topic entirely. The old one keeps working for anyone who
+    /// already has it, which is the point of being able to rotate.
+    func regenerateAlertTopic() {
+        guard !settingsLocked else { return }
+        topicStore.reset()
+        alertTopic = topicStore.topicCreatingIfNeeded()
+        rebuildAlertTransport()
+        settingsMessage = "New link created. Re-subscribe on your phone; the old link no longer receives alerts from this Mac."
+    }
+
+    func copyAlertLink() {
+        guard !alertSubscribeURL.isEmpty else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(alertSubscribeURL, forType: .string)
+        settingsMessage = "Link copied. Open it on your phone, or subscribe to it in the ntfy app."
+    }
+
+    private func rebuildAlertTransport() {
+        alertResponse.replaceTransport(
+            NtfyTransport(topic: alertTopic, http: URLSessionHTTPClient()))
+    }
+
+    func sendTestAlert() {
+        guard alertResponse.isAvailable else { return }
+        Task { [weak self] in
+            guard let self else { return }
+            let ok = await self.alertResponse.sendTest()
+            self.settingsMessage = ok
+                ? "Test alert sent. It should be on your phone now."
+                : "Could not reach ntfy.sh. Check the network and try again."
         }
     }
 

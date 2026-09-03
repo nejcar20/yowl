@@ -32,13 +32,22 @@ closing your own laptop is not theft.
 - **Photographs** (optional) of whoever is there, including the ten seconds
   *before* the alarm — often the more useful shot, since it catches someone
   walking up rather than the back of their head.
+- **A push to your phone** (optional) with the photos, via your own private
+  ntfy.sh link.
 
 ## Privacy
 
-The app has no network code and no network entitlement. It cannot send anything
-anywhere. Photographs are written to
+No accounts, no analytics, no servers of our own. Photographs are written to
 `~/Library/Application Support/LaptopAlarm/Evidence`, capped at the 40 most
-recent, and never leave your Mac. See [PRIVACY.md](docs/PRIVACY.md).
+recent.
+
+Nothing leaves your Mac unless you switch on **phone alerts**, which send the
+alarm and up to three photos to your own private ntfy.sh link. That link's name
+is 128 bits of randomness and is the access control — treat it like a password,
+and rotate it from Settings if it leaks. ntfy deletes attachments after a few
+hours, so the copies on your Mac are the durable ones.
+
+See [PRIVACY.md](docs/PRIVACY.md).
 
 ## Known limitations, stated plainly
 
@@ -54,7 +63,7 @@ recent, and never leave your Mac. See [PRIVACY.md](docs/PRIVACY.md).
 ## Building
 
 ```bash
-swift test              # 198 tests
+swift test              # 208 tests
 ./Scripts/make-bundle.sh
 open build/LaptopAlarm.app
 ```

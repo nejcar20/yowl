@@ -62,6 +62,7 @@ cat > "${ENTITLEMENTS}" <<'ENT'
 <plist version="1.0">
 <dict>
     <key>com.apple.security.device.camera</key><true/>
+    <key>com.apple.security.network.client</key><true/>
 </dict>
 </plist>
 ENT

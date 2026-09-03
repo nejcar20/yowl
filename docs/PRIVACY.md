@@ -2,58 +2,76 @@
 
 _Last updated: 3 September 2026_
 
-**LaptopAlarm does not collect, transmit, or receive any data whatsoever.**
+**LaptopAlarm collects nothing about you and has no servers.** There is no
+analytics, no crash reporting, no telemetry, and no account.
 
-The app has no servers, no analytics, no crash reporting, no telemetry, and no
-network code of any kind. It cannot send anything anywhere, because there is
-nothing in it that talks to a network.
+It sends data to exactly one place, only if you switch it on, and only to a
+destination you control: your own phone.
 
-## What the app stores, and where
-
-Everything below stays on your Mac. None of it is transmitted.
+## What stays on your Mac
 
 | What | Where | Why |
 |---|---|---|
-| Your disarm passcode | macOS Keychain, on this device only | To stop the alarm. Stored as a salted PBKDF2-SHA256 hash — the passcode itself is never written down, and cannot be recovered from what is stored. |
-| Your settings | macOS user defaults | Which triggers are on, the grace period, motion sensitivity. |
-| Alarm photographs | `~/Library/Application Support/LaptopAlarm/Evidence` | Only if you switch on "Photograph whoever is there". Capped at the 40 most recent; older ones are deleted automatically. |
+| Your disarm passcode | macOS Keychain, this device only | Stored as a salted PBKDF2-SHA256 hash. The passcode itself is never written down and cannot be recovered from what is stored. |
+| Your settings | macOS user defaults | Which triggers are on, grace period, motion sensitivity. |
+| Alarm photographs | `~/Library/Application Support/LaptopAlarm/Evidence` | Only if you switch on photographs. Capped at the 40 most recent; older ones are deleted automatically. |
+| Your alert link | macOS Keychain, this device only | Only if you switch on phone alerts. |
+
+## Phone alerts — the only thing that leaves your Mac
+
+**Off by default.** Nothing is transmitted unless you switch on "Send an alert
+to my phone".
+
+When it is on, and the alarm fires, LaptopAlarm sends to **ntfy.sh**
+(operated by Philipp Heckel, [ntfy.sh](https://ntfy.sh)):
+
+- A short message saying which trigger fired and when.
+- Up to three of the most recent alarm photographs, if photographs are on.
+
+**How your alerts are kept private.** Your alerts go to a private topic whose
+name is 128 bits of randomness generated on your Mac. That name is the access
+control: anyone who has the link can read your alerts and photographs, and
+anyone who does not cannot find them. Treat the link like a password. You can
+create a new one at any time from Settings, which immediately stops the old one
+receiving anything further from your Mac.
+
+**ntfy.sh is not storage.** Attachments are deleted after roughly three hours
+and messages after twelve. The copies on your Mac are the durable ones.
+
+**If you would rather not use a third party**, you can run your own ntfy server
+— it is open source and self-hostable — or leave phone alerts off entirely and
+use the photographs saved on your Mac.
 
 ## The camera
 
-The camera is used only if you turn on movement detection or alarm
-photographs. When either is on and the alarm is armed, the green camera light
-is on — that is enforced by the hardware and cannot be hidden.
+Used only if you turn on movement detection or alarm photographs. When either is
+on and the alarm is armed, the green camera light is on; that is enforced by the
+hardware and cannot be hidden.
 
-Video is processed in memory to detect movement and is discarded. If you have
-switched on alarm photographs, still images are written to the folder above and
-stay there until you delete them or they age out of the 40 most recent.
+Video is processed in memory to detect movement and then discarded. Still images
+are saved only if you switched photographs on.
 
-**No image ever leaves your Mac.** There is no upload, no cloud, no sync.
-
-## What the app does not do
+## What the app never does
 
 - Does not use location services.
 - Does not read your files, contacts, calendar, or browsing.
-- Does not identify you, profile you, or build any record of your behaviour.
-- Does not contain third-party code, SDKs, trackers, or advertising.
+- Does not identify or profile you.
+- Contains no third-party SDKs, trackers, or advertising.
+- Sends nothing anywhere unless you switch on phone alerts.
 
 ## Your data rights
 
-Because no personal data is collected or transmitted, there is nothing for us
-to access, export, correct, or delete on your behalf. Everything the app stores
-is on your own machine and under your control:
+Nothing is collected about you, so there is no account to export or delete.
+Everything is under your control:
 
 - **Photographs:** open the folder from Settings and delete them.
-- **Passcode:** Keychain Access, search for `com.jernejkocica.laptopalarm`.
+- **Alert link:** create a new one, or switch alerts off, in Settings.
+- **Passcode and link:** Keychain Access, search `com.jernejkocica.laptopalarm`.
 - **Settings:** removed when you delete the app.
+
+Under GDPR you may contact us about any of the above, though in practice we hold
+nothing to act on.
 
 ## Contact
 
 jernejkocica@gmail.com
-
----
-
-*This policy describes the app's behaviour as shipped. If a future version adds
-anything that transmits data — for example sending an alarm photo to your phone
-— this policy will be updated in the same release, and the app will ask before
-sending anything.*
