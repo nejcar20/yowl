@@ -13,9 +13,6 @@ public enum FrameSourceError: Error, Equatable {
 public protocol FrameSourcing: AnyObject {
     /// Hardware capability, fixed for the process.
     var isAvailable: Bool { get }
-    /// Whether capture is currently permitted. Changes when the user grants or
-    /// revokes access, so it must never be folded into `isAvailable`.
-    var isPermitted: Bool { get }
     /// Raises the capture rate while the user is watching a live readout.
     func setHighRate(_ high: Bool)
     /// Prompts for access if the user has not been asked yet. Returns whether
@@ -107,14 +104,6 @@ public final class CameraFrameSource: NSObject, FrameSourcing, StillCapturing,
     /// Permission is user configuration and is handled by `requestAccess` and
     /// `isEnabled`, both of which are re-read.
     public let isAvailable = AVCaptureDevice.default(for: .video) != nil
-
-    /// Whether capture would be permitted right now. Distinct from availability.
-    public var isPermitted: Bool {
-        switch AVCaptureDevice.authorizationStatus(for: .video) {
-        case .authorized, .notDetermined: true
-        default: false
-        }
-    }
 
     public func setHighRate(_ high: Bool) {
         isCalibrationRate.withLock { $0 = high }
@@ -293,7 +282,6 @@ public final class CameraFrameSource: NSObject, FrameSourcing, StillCapturing,
 #if DEBUG
 public final class FakeFrameSource: FrameSourcing {
     public let isAvailable: Bool
-    public var isPermitted = true
     public private(set) var isRunning = false
     public private(set) var startCallCount = 0
     private var onFrame: ((GrayscaleFrame) -> Void)?

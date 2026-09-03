@@ -62,15 +62,7 @@ private func makeResponse(_ camera: FakeStillCapture, _ store: InMemoryEvidenceS
     #expect(store.saved.count == 1, "disarming must not keep photographing the room")
 }
 
-// Availability is fixed at construction because the engine filters on it once.
-// Camera permission is NOT availability: folding it in meant a Mac that launched
-// with access denied dropped photographs permanently, and granting access
-// afterwards could not bring them back while the toggle still read on.
-@Test func availabilityIsFixedSoTheEngineNeverStrandsTheResponse() {
-    let camera = FakeStillCapture()
-    camera.available = false
-    #expect(makeResponse(camera, InMemoryEvidenceStore()).isAvailable == true)
-}
+
 
 // Off unless asked for: it writes photographs of whoever is in front of the
 // machine to disk.
@@ -93,4 +85,26 @@ private func makeResponse(_ camera: FakeStillCapture, _ store: InMemoryEvidenceS
     #expect(item?.capturedAt == Date(timeIntervalSince1970: 1_000_000))
     #expect(item?.trigger == "motion")
     #expect((item?.jpeg.count ?? 0) > 0)
+}
+
+// A Mac with no camera must not be offered a photographs toggle. Availability
+// is still fixed at construction — so the engine cannot strand the response —
+// but it reflects the hardware rather than being unconditionally true.
+@Test func aMacWithNoCameraDoesNotOfferPhotographs() {
+    let camera = FakeStillCapture()
+    camera.available = false
+    #expect(makeResponse(camera, InMemoryEvidenceStore()).isAvailable == false)
+}
+
+@Test func aMacWithACameraOffersPhotographs() {
+    #expect(makeResponse(FakeStillCapture(), InMemoryEvidenceStore()).isAvailable == true)
+}
+
+// Availability must not follow permission: revoking access after construction
+// cannot be allowed to strand the response, because the engine filters once.
+@Test func revokingAccessAfterConstructionDoesNotChangeAvailability() {
+    let camera = FakeStillCapture()
+    let response = makeResponse(camera, InMemoryEvidenceStore())
+    camera.available = false      // as if permission were revoked
+    #expect(response.isAvailable == true, "fixed at construction, per Capability")
 }

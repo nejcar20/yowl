@@ -53,6 +53,7 @@ public final class SnapshotResponse: Response {
 
     public init(camera: StillCapturing, store: EvidenceStoring,
                 shotCount: Int = 3, interval: TimeInterval = 2, clock: AlarmClock) {
+        self.isAvailable = camera.isAvailable
         self.camera = camera
         self.store = store
         self.shotCount = max(1, shotCount)
@@ -60,9 +61,11 @@ public final class SnapshotResponse: Response {
         self.clock = clock
     }
 
-    /// Fixed at construction, as `Capability` requires. Whether the camera is
-    /// permitted right now is user configuration and lives in `isEnabled`.
-    public let isAvailable = true
+    /// The camera's HARDWARE availability, captured once. Fixed at construction
+    /// as `Capability` requires, but not simply `true`: a Mac with no camera at
+    /// all must not be offered a photographs toggle. Whether an existing camera
+    /// is permitted right now is user configuration and lives in `isEnabled`.
+    public let isAvailable: Bool
 
     public func fire(context: AlarmContext) async {
         cancelPending()
