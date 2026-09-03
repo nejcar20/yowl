@@ -2,6 +2,8 @@
 
 A menu-bar alarm that makes stealing your MacBook loud.
 
+Free and open source (MIT). No accounts, no analytics, no servers.
+
 Arm it when you leave your laptop on a café table. If someone unplugs the
 charger, closes the lid, or picks the machine up, it screams at full volume —
 over mute, over headphones — locks the screen, and photographs whoever is
@@ -34,6 +36,14 @@ closing your own laptop is not theft.
   walking up rather than the back of their head.
 - **A push to your phone** (optional) with the photos, via your own private
   ntfy.sh link.
+
+## Why the source is open
+
+The app asks for your camera and can send photographs to your phone. You are
+being asked to trust a stranger's binary with that. The source is here so you
+do not have to: `grep -rn "URLSession\|NWConnection" Sources/` returns exactly
+one file, and the signed app carries only the camera and network-client
+entitlements — you can verify both in about a minute.
 
 ## Privacy
 
@@ -76,3 +86,23 @@ the script tells you exactly what is missing.
 
 macOS 14 or later. Apple Silicon for the lid trigger (Intel Macs have no hinge
 angle sensor).
+
+## Contributing
+
+Bug reports are more useful than features right now. In particular:
+
+- **Does motion detection work at your desk?** Use "Test sensitivity" in
+  Settings, wave your hand, and tell me the number. Repetitive backgrounds
+  (blinds, tiles, brick) are known to defeat it and I would like real data on
+  how common that is.
+- **Did the alarm ever fire when it should not have?** That is the failure that
+  matters most.
+
+The test suite is the contribution guide: `swift test` runs 241 tests, and
+anything touching a trigger, a response, or the privacy-facing behaviour needs
+one that fails when the change is reverted. Several bugs in this codebase
+shipped behind tests that passed against broken code, so that bar is deliberate.
+
+## License
+
+MIT — see [LICENSE](LICENSE).
