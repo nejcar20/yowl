@@ -13,7 +13,7 @@ destination you control: your own phone.
 | What | Where | Why |
 |---|---|---|
 | Your disarm passcode | macOS Keychain, this device only | Stored as a salted PBKDF2-SHA256 hash. The passcode itself is never written down and cannot be recovered from what is stored. |
-| Your settings | macOS user defaults | Which triggers are on, grace period, motion sensitivity. |
+| Your settings | macOS user defaults | Which triggers and responses are switched on — including whether photographs and phone alerts are enabled — the grace period, and motion sensitivity. |
 | Alarm photographs | `~/Library/Application Support/LaptopAlarm/Evidence` | Only if you switch on photographs. Capped at the 40 most recent; older ones are deleted automatically. |
 | Your alert link | macOS Keychain, this device only | Only if you switch on phone alerts. |
 
@@ -69,7 +69,7 @@ Everything is under your control:
 - **Photographs:** open the folder from Settings and delete them.
 - **Alert link:** create a new one, or switch alerts off, in Settings.
 - **Passcode and link:** Keychain Access, search `com.jernejkocica.laptopalarm`.
-- **Settings:** removed when you delete the app.
+- **Settings:** stored in `~/Library/Preferences/com.jernejkocica.laptopalarm.plist`. macOS does not remove this when an app is deleted; delete that file to clear it.
 
 Under GDPR you may contact us about any of the above, though in practice we hold
 nothing to act on.

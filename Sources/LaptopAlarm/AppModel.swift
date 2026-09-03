@@ -29,6 +29,9 @@ final class AppModel: ObservableObject {
     /// Surfaced once at launch when something had to be repaired or switched off
     /// behind the user's back.
     @Published private(set) var startupMessage: String?
+
+    /// Dismissable: it describes a one-off repair at launch, not a live state.
+    func dismissStartupMessage() { startupMessage = nil }
     @Published private(set) var lidEnabled = false
     @Published private(set) var liveMotionScore: Double?
     @Published private(set) var isCalibrating = false
@@ -159,11 +162,16 @@ final class AppModel: ObservableObject {
         // the toggle reading on while fire() returned silently forever -- and
         // the privacy policy itself invites users to delete that Keychain item.
         // Mint a replacement, or turn the feature off and say so.
-        if preferences.isEnabled(alert.identifier, default: false) {
-            if let existing = topicStore.topic {
-                alert.isEnabled = true
-                alertTopic = existing
-            } else if let minted = topicStore.topicCreatingIfNeeded() {
+        switch AlertStartupDecision.decide(
+            preferenceEnabled: preferences.isEnabled(alert.identifier, default: false),
+            read: topicStore.readTopic()) {
+        case .leaveOff:
+            break
+        case let .use(existing):
+            alert.isEnabled = true
+            alertTopic = existing
+        case .mint:
+            if let minted = topicStore.topicCreatingIfNeeded() {
                 alert.isEnabled = true
                 alertTopic = minted
                 alert.replaceTransport(NtfyTransport(topic: minted,
@@ -172,12 +180,19 @@ final class AppModel: ObservableObject {
             } else {
                 alert.isEnabled = false
                 preferences.setEnabled(false, for: alert.identifier)
-                startupMessage = "Phone alerts were switched off: the alert link could not be read or created."
+                startupMessage = "Phone alerts are off: a new alert link could not be created."
             }
+        case .pauseUnreadable:
+            // Never mint here: minting deletes before adding, so a link that is
+            // present but momentarily unreadable would be destroyed. That is
+            // most likely at login, before the Keychain is usable — which is
+            // exactly when a login item starts. The stored preference is left
+            // alone so the link comes back on the next good read.
+            alert.isEnabled = false
+            startupMessage = "Phone alerts are paused: the alert link could not be read. Your existing link is intact — switch alerts off and on once you are logged in."
         }
         alertEnabled = alert.isActive
         alert.includesPhotographs = snapshot.isActive
-        alertTopic = topicStore.topic ?? ""
         motionEnabled = motion.isActive
         powerEnabled = trigger.isActive
         lidEnabled = lid.isActive
@@ -309,6 +324,8 @@ final class AppModel: ObservableObject {
 
     func setAlertEnabled(_ enabled: Bool) {
         guard !settingsLocked else { return }
+        // Whatever the launch message said is no longer what is happening.
+        startupMessage = nil
         guard enabled else {
             alertResponse.isEnabled = false
             preferences.setEnabled(false, for: alertResponse.identifier)
@@ -334,6 +351,7 @@ final class AppModel: ObservableObject {
     /// already has it, which is the point of being able to rotate.
     func regenerateAlertTopic() {
         guard !settingsLocked else { return }
+        startupMessage = nil
         guard topicStore.reset() else {
             settingsMessage = "Could not remove the old link, so a new one was not created. The old link is still active — try again."
             return
@@ -585,8 +603,13 @@ final class AppModel: ObservableObject {
             // have been feeding it and every photo would have been empty.
             // Starting it cold when the alarm fires is not an option: the first
             // frame takes long enough that the thief is gone.
+            // Swallowing this meant photographs could be switched on, the toggle
+            // could read on, and nothing would ever be captured — with the
+            // camera revoked in System Settings, say — and the user would never
+            // be told. Motion warns at arm time; photographs must too.
+            var photographsFailed = false
             if snapshotEnabled && !motionEnabled {
-                try? camera.start { _ in }
+                do { try camera.start { _ in } } catch { photographsFailed = true }
             }
             errorMessage = nil
             // Armed, but the Mac may sleep and stop noticing the charger. Not
@@ -599,6 +622,9 @@ final class AppModel: ObservableObject {
             }
             if engine.failedTriggers.contains("motion") {
                 warnings.append("The camera would not start, so movement is not being watched.")
+            }
+            if photographsFailed {
+                warnings.append("The camera would not start, so no photographs will be taken. Check camera access in System Settings ▸ Privacy & Security.")
             }
             warningMessage = warnings.isEmpty ? nil : "Armed, but: " + warnings.joined(separator: " ")
         } catch AlarmEngineError.noPasscodeSet {

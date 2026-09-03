@@ -281,7 +281,10 @@ public final class CameraFrameSource: NSObject, FrameSourcing, StillCapturing,
 
 #if DEBUG
 public final class FakeFrameSource: FrameSourcing {
-    public let isAvailable: Bool
+    /// A `var` so a test can flip it after construction. As a `let` it made
+    /// "availability is captured at construction" unobservable, and reverting
+    /// that fix passed the entire suite.
+    public var isAvailable: Bool
     public private(set) var isRunning = false
     public private(set) var startCallCount = 0
     private var onFrame: ((GrayscaleFrame) -> Void)?

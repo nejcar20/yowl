@@ -93,14 +93,41 @@ public final class KeychainTopicStore {
          kSecAttrAccount as String: account]
     }
 
-    public var topic: String? {
+    /// Distinguishes "there is no link" from "the link could not be read".
+    /// Collapsing both to nil meant one transient failure -- most likely at
+    /// login, when the Keychain may not yet be usable and this app is a login
+    /// item -- was read as "missing" and the repair path DELETED the user's
+    /// live link and minted a replacement, leaving their phone subscribed to a
+    /// dead topic.
+    public enum TopicRead: Equatable {
+        case found(String)
+        case notFound
+        case unreadable(OSStatus)
+    }
+
+    public func readTopic() -> TopicRead {
         var query = baseQuery
         query[kSecReturnData as String] = true
         query[kSecMatchLimit as String] = kSecMatchLimitOne
         var item: CFTypeRef?
-        guard SecItemCopyMatching(query as CFDictionary, &item) == errSecSuccess,
-              let data = item as? Data else { return nil }
-        return String(data: data, encoding: .utf8)
+        let status = SecItemCopyMatching(query as CFDictionary, &item)
+        switch status {
+        case errSecSuccess:
+            guard let data = item as? Data,
+                  let value = String(data: data, encoding: .utf8),
+                  !value.isEmpty
+            else { return .unreadable(status) }
+            return .found(value)
+        case errSecItemNotFound:
+            return .notFound
+        default:
+            return .unreadable(status)
+        }
+    }
+
+    public var topic: String? {
+        if case let .found(value) = readTopic() { return value }
+        return nil
     }
 
     /// Returns the existing topic, or creates one. Stable across launches so the
@@ -109,8 +136,11 @@ public final class KeychainTopicStore {
     /// anyway meant alerts were sent to a topic the next launch would not
     /// remember, so the phone stayed subscribed to a dead link while the UI
     /// showed everything working.
+    /// Only ever called once the caller has established the topic is genuinely
+    /// absent. It deletes before adding, so calling it on an unreadable-but-
+    /// present item would destroy a working link.
     public func topicCreatingIfNeeded() -> String? {
-        if let existing = topic { return existing }
+        if case let .found(existing) = readTopic() { return existing }
         guard let generated = NtfyTransport.generateTopic() else { return nil }
         var query = baseQuery
         query[kSecValueData as String] = Data(generated.utf8)
