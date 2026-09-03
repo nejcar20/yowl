@@ -63,7 +63,7 @@ See [PRIVACY.md](docs/PRIVACY.md).
 ## Building
 
 ```bash
-swift test              # 208 tests
+swift test              # 224 tests
 ./Scripts/make-bundle.sh
 open build/LaptopAlarm.app
 ```
