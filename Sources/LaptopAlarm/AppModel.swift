@@ -23,6 +23,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var settingsMessage: String?
     @Published private(set) var powerEnabled = true
     @Published private(set) var motionEnabled = false
+    @Published private(set) var snapshotEnabled = false
     @Published private(set) var lidEnabled = false
     @Published private(set) var liveMotionScore: Double?
     @Published private(set) var isCalibrating = false
@@ -42,6 +43,9 @@ final class AppModel: ObservableObject {
     private let screenLock: ScreenLockResponse
     private let powerTrigger: PowerTrigger
     private let motionTrigger: MotionTrigger
+    private let snapshotResponse: SnapshotResponse
+    private let camera: CameraFrameSource
+    private let evidenceStore: FileEvidenceStore
     private let lidTrigger: LidAngleTrigger
     /// One list so a per-trigger setting cannot reach some triggers and not others.
     private var allTriggers: [any Trigger] {
@@ -66,8 +70,14 @@ final class AppModel: ObservableObject {
         let trigger = PowerTrigger(monitor: IOKitPowerSourceMonitor(),
                                    graceSeconds: preferences.graceSeconds)
         self.powerTrigger = trigger
+        // One camera source shared by motion detection and evidence capture:
+        // two sessions on one device is a conflict, and reusing the frames the
+        // detector already receives means a photo from the exact moment the
+        // alarm fired rather than one taken a second later.
+        let camera = CameraFrameSource(framesPerSecond: 5)
+        self.camera = camera
         let motion = MotionTrigger(
-            source: CameraFrameSource(framesPerSecond: 5),
+            source: camera,
             detector: EgoMotionDetector(threshold: preferences.motionThreshold),
             graceSeconds: preferences.graceSeconds)
         self.motionTrigger = motion
@@ -83,10 +93,14 @@ final class AppModel: ObservableObject {
         // AppModel is itself a single @StateObject for the app's lifetime, so
         // this initializer is that one place.
         let lock = ScreenLockResponse(locker: LoginFrameworkScreenLocker())
+        let evidenceStore = FileEvidenceStore()
+        self.evidenceStore = evidenceStore
+        let snapshot = SnapshotResponse(camera: camera, store: evidenceStore, clock: clock)
+        self.snapshotResponse = snapshot
         self.screenLock = lock
 
         engine = AlarmEngine(triggers: [trigger, motion, lid],
-                             responses: [siren, lock],
+                             responses: [siren, lock, snapshot],
                              clock: clock,
                              passcodes: passcodes,
                              sleepAssertion: IOKitSleepAssertion())
@@ -123,6 +137,10 @@ final class AppModel: ObservableObject {
         // use — closing your own laptop, walking out of Wi-Fi range — so they
         // are a deliberate choice rather than something to discover by accident.
         lid.isEnabled = lid.isAvailable && preferences.isEnabled(lid.identifier, default: false)
+        snapshot.isEnabled = snapshot.isAvailable
+            && preferences.isEnabled(snapshot.identifier, default: false)
+        camera.setRetainsStills(snapshot.isEnabled)
+        snapshotEnabled = snapshot.isActive
         motionEnabled = motion.isActive
         powerEnabled = trigger.isActive
         lidEnabled = lid.isActive
@@ -214,6 +232,37 @@ final class AppModel: ObservableObject {
     }
 
     var motionAvailable: Bool { motionTrigger.isAvailable }
+    var snapshotAvailable: Bool { snapshotResponse.isAvailable }
+    var evidenceFolder: URL { evidenceStore.directoryURL }
+    var savedEvidenceCount: Int { evidenceStore.allItems().count }
+
+    func setSnapshotEnabled(_ enabled: Bool) {
+        guard !settingsLocked else { return }
+        guard enabled else {
+            snapshotResponse.isEnabled = false
+            preferences.setEnabled(false, for: snapshotResponse.identifier)
+            snapshotEnabled = false
+            camera.setRetainsStills(false)
+            return
+        }
+        // Same permission the motion trigger needs, asked for at the same point:
+        // when the feature is switched on, not discovered at arm time.
+        Task { [weak self] in
+            guard let self else { return }
+            let granted = await self.camera.requestAccess()
+            let applied = granted && self.snapshotResponse.isAvailable
+            self.snapshotResponse.isEnabled = applied
+            self.preferences.setEnabled(applied, for: self.snapshotResponse.identifier)
+            self.snapshotEnabled = self.snapshotResponse.isActive
+            self.camera.setRetainsStills(applied)
+            self.settingsMessage = applied ? nil
+                : "LaptopAlarm needs camera access to photograph a thief. Grant it in System Settings ▸ Privacy & Security ▸ Camera."
+        }
+    }
+
+    func revealEvidenceFolder() {
+        NSWorkspace.shared.open(evidenceStore.directoryURL)
+    }
 
     var lidAvailable: Bool { lidTrigger.isAvailable }
 
@@ -408,6 +457,14 @@ final class AppModel: ObservableObject {
         stopCalibration()
         do {
             try engine.arm()
+            // Evidence capture needs frames flowing, and only the motion trigger
+            // starts the camera. With snapshots on but motion off, nothing would
+            // have been feeding it and every photo would have been empty.
+            // Starting it cold when the alarm fires is not an option: the first
+            // frame takes long enough that the thief is gone.
+            if snapshotEnabled && !motionEnabled {
+                try? camera.start { _ in }
+            }
             errorMessage = nil
             // Armed, but the Mac may sleep and stop noticing the charger. Not
             // an error: the alarm is still wired up.
@@ -439,6 +496,9 @@ final class AppModel: ObservableObject {
 
     func disarm() {
         if engine.disarm(passcode: passcodeEntry) {
+            // Release the camera if we were the ones holding it open. The motion
+            // trigger releases its own.
+            if snapshotEnabled && !motionEnabled { camera.stop() }
             passcodeEntry = ""
             errorMessage = nil
             warningMessage = nil

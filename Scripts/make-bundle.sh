@@ -30,7 +30,7 @@ cat > "${APP_DIR}/Contents/Info.plist" <<PLIST
          camera, rather than prompting. The wording is shown verbatim in the
          permission dialog and is the whole of the user's decision. -->
     <key>NSCameraUsageDescription</key>
-    <string>LaptopAlarm watches for the laptop being picked up. Video never leaves your Mac and is never recorded.</string>
+    <string>LaptopAlarm watches for the laptop being picked up, and — if you switch it on — photographs whoever is in front of it when the alarm fires. Everything stays on this Mac unless you set up somewhere to send it.</string>
 </dict>
 </plist>
 PLIST

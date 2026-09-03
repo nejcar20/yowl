@@ -2,6 +2,7 @@
 import Foundation
 import AVFoundation
 import CoreVideo
+import CoreImage
 import os
 
 public enum FrameSourceError: Error, Equatable {
@@ -26,7 +27,7 @@ public protocol FrameSourcing: AnyObject {
 /// size. The green camera light stays on for as long as this runs; that is
 /// hardware-enforced and cannot be suppressed, which is why motion detection is
 /// opt-in rather than on by default.
-public final class CameraFrameSource: NSObject, FrameSourcing,
+public final class CameraFrameSource: NSObject, FrameSourcing, StillCapturing,
                                       AVCaptureVideoDataOutputSampleBufferDelegate {
     /// Read from the capture queue, so these must not be main-actor isolated.
     public nonisolated let targetWidth = 320
@@ -46,6 +47,13 @@ public final class CameraFrameSource: NSObject, FrameSourcing,
     private struct CaptureState {
         var lastDelivery = Date.distantPast
         var isRunning = false
+        /// Retained only while evidence capture is switched on. The video output
+        /// already delivers full-resolution frames that get downscaled for
+        /// motion, so keeping the last one costs one buffer and gives a photo
+        /// from the exact moment the alarm fired — no second output, no second
+        /// session, and nothing to warm up.
+        var retainStills = false
+        var latestStill: Data?
     }
     private let captureState = OSAllocatedUnfairLock(initialState: CaptureState())
     private nonisolated let minimumInterval: TimeInterval
@@ -80,6 +88,15 @@ public final class CameraFrameSource: NSObject, FrameSourcing,
         isCalibrationRate.withLock { $0 = high }
     }
 
+    /// Turning this on makes the source keep the most recent full-resolution
+    /// frame so `captureStill()` can return it.
+    public func setRetainsStills(_ retain: Bool) {
+        captureState.withLock {
+            $0.retainStills = retain
+            if !retain { $0.latestStill = nil }
+        }
+    }
+
     public func start(onFrame: @escaping (GrayscaleFrame) -> Void) throws {
         stop()
         guard let device = AVCaptureDevice.default(for: .video) else {
@@ -92,7 +109,10 @@ public final class CameraFrameSource: NSObject, FrameSourcing,
         captureState.withLock { $0 = CaptureState(lastDelivery: .distantPast, isRunning: true) }
 
         session.beginConfiguration()
-        session.sessionPreset = .low
+        // Motion downscales to 320x240 by sampling, so a higher preset costs it
+        // almost nothing — but a `.low` frame is useless as evidence of who took
+        // the machine. Only pay for the bandwidth when stills are wanted.
+        session.sessionPreset = captureState.withLock { $0.retainStills } ? .high : .low
         if let input = try? AVCaptureDeviceInput(device: device), session.canAddInput(input) {
             session.addInput(input)
         } else {
@@ -106,6 +126,10 @@ public final class CameraFrameSource: NSObject, FrameSourcing,
         if session.canAddOutput(output) { session.addOutput(output) }
         session.commitConfiguration()
         session.startRunning()
+    }
+
+    public func captureStill() -> Data? {
+        captureState.withLock { $0.latestStill }
     }
 
     public func stop() {
@@ -143,12 +167,29 @@ public final class CameraFrameSource: NSObject, FrameSourcing,
             return true
         }
         guard shouldDeliver else { return }
+        if captureState.withLock({ $0.retainStills }),
+           let jpeg = Self.jpeg(from: sampleBuffer) {
+            captureState.withLock { $0.latestStill = jpeg }
+        }
         guard let frame = Self.grayscaleFrame(from: sampleBuffer,
                                               width: targetWidth, height: targetHeight)
         else { return }
         // Only `frame` crosses the thread boundary; the handler is read on the
         // main actor, where it lives.
         Task { @MainActor [weak self] in self?.onFrame?(frame) }
+    }
+
+    /// Encodes the full-resolution frame as JPEG for evidence.
+    nonisolated static func jpeg(from sampleBuffer: CMSampleBuffer,
+                                 quality: Double = 0.8) -> Data? {
+        guard let buffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return nil }
+        let image = CIImage(cvPixelBuffer: buffer)
+        let context = CIContext(options: nil)
+        guard let colorSpace = image.colorSpace ?? CGColorSpace(name: CGColorSpace.sRGB)
+        else { return nil }
+        return context.jpegRepresentation(of: image, colorSpace: colorSpace,
+                                          options: [kCGImageDestinationLossyCompressionQuality
+                                                    as CIImageRepresentationOption: quality])
     }
 
     /// Downscales and converts BGRA to 8-bit grayscale.
