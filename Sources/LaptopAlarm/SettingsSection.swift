@@ -9,7 +9,6 @@ import AlarmCore
 struct SettingsSection: View {
     @ObservedObject var model: AppModel
     @State private var expanded = false
-    @State private var currentPasscode = ""
     @State private var newPasscode = ""
 
     var body: some View {
@@ -19,6 +18,55 @@ struct SettingsSection: View {
                     Text("Disarm to change settings.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
+
+                Group {
+                    Text("What triggers the alarm").font(.caption).foregroundStyle(.secondary)
+                    Toggle("Charger unplugged", isOn: Binding(
+                        get: { model.powerEnabled },
+                        set: { model.setPowerEnabled($0) }))
+                    if model.motionAvailable {
+                        Toggle("Laptop is moved (uses the camera)", isOn: Binding(
+                            get: { model.motionEnabled },
+                            set: { model.setMotionEnabled($0) }))
+                        Text("The camera light stays on while armed. Video never leaves your Mac and is never recorded.")
+                            .font(.caption2).foregroundStyle(.secondary)
+
+                        if model.motionEnabled {
+                            HStack {
+                                Button(model.isCalibrating ? "Stop test" : "Test sensitivity") {
+                                    if model.isCalibrating { model.stopCalibration() }
+                                    else { model.startCalibration() }
+                                }
+                                if let score = model.liveMotionScore {
+                                    Text(String(format: "%.4f", score))
+                                        .font(.caption.monospacedDigit())
+                                        .foregroundStyle(score > model.motionThreshold ? Color.red : Color.secondary)
+                                }
+                            }
+                            HStack {
+                                Text("Sensitivity").font(.caption2).foregroundStyle(.secondary)
+                                Slider(value: Binding(get: { model.motionSensitivity },
+                                                      set: { model.setMotionSensitivity($0) }),
+                                       in: 0...1)
+                                Text(String(format: "%.4f", model.motionThreshold))
+                                    .font(.caption2.monospacedDigit())
+                                    .foregroundStyle(.secondary)
+                            }
+                            Text("Right for more sensitive. The alarm fires when the number above crosses this one.")
+                                .font(.caption2).foregroundStyle(.secondary)
+
+                            if model.isCalibrating {
+                                Text("Nudge the laptop: the number should jump. Wave a hand in front of it: the number should not. If waving DOES move it, your background is too repetitive for this — blinds, tiles and brick confuse it.")
+                                    .font(.caption2).foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                    if !model.powerEnabled && !model.motionEnabled {
+                        Text("Nothing is set to watch for anything — arming will refuse.")
+                            .font(.caption2).foregroundStyle(.orange)
+                    }
+                }
+                Divider()
 
                 Group {
                     Text("When the alarm fires").font(.caption).foregroundStyle(.secondary)
@@ -67,14 +115,12 @@ struct SettingsSection: View {
 
                 Group {
                     Text("Change passcode").font(.caption).foregroundStyle(.secondary)
-                    SecureField("Current", text: $currentPasscode)
-                    SecureField("New", text: $newPasscode)
+                    SecureField("New passcode", text: $newPasscode)
                     Button("Change") {
-                        model.changePasscode(current: currentPasscode, new: newPasscode)
-                        currentPasscode = ""
+                        model.changePasscode(to: newPasscode)
                         newPasscode = ""
                     }
-                    .disabled(currentPasscode.isEmpty || newPasscode.isEmpty)
+                    .disabled(newPasscode.isEmpty)
                 }
 
                 if let message = model.settingsMessage {
@@ -85,5 +131,11 @@ struct SettingsSection: View {
             .disabled(model.settingsLocked)
         }
         .font(.callout)
+        // The popover closing or the group collapsing must release the camera:
+        // otherwise the light stays on with no visible reason.
+        .onDisappear { model.stopCalibration() }
+        .onChange(of: expanded) { _, isExpanded in
+            if !isExpanded { model.stopCalibration() }
+        }
     }
 }

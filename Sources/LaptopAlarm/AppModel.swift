@@ -21,12 +21,29 @@ final class AppModel: ObservableObject {
     @Published private(set) var graceSeconds: TimeInterval = GraceLimits.defaultValue
     @Published private(set) var launchAtLogin = false
     @Published private(set) var settingsMessage: String?
+    @Published private(set) var powerEnabled = true
+    @Published private(set) var motionEnabled = false
+    @Published private(set) var liveMotionScore: Double?
+    @Published private(set) var isCalibrating = false
+    /// Shown in the main panel, not buried in settings: a configuration that
+    /// cannot protect anything has to be visible before the user walks away.
+    @Published private(set) var protectionWarning: String?
+    @Published private(set) var motionSensitivity = MotionSensitivity.sensitivity(
+        forThreshold: MotionSensitivity.defaultValue)
 
     private let engine: AlarmEngine
     private let passcodes: KeychainPasscodeStore
     private let siren: SirenResponse
     private let screenLock: ScreenLockResponse
     private let powerTrigger: PowerTrigger
+    private let motionTrigger: MotionTrigger
+    /// One list so a per-trigger setting cannot reach some triggers and not others.
+    private var allTriggers: [any Trigger] { [powerTrigger, motionTrigger] }
+
+    /// Recomputed whenever anything that affects coverage changes.
+    private func refreshProtectionWarning() {
+        protectionWarning = ProtectionStatus(triggers: allTriggers).warning
+    }
     private let preferences: PreferenceStoring
     private var countdownTask: Task<Void, Never>?
 
@@ -39,6 +56,11 @@ final class AppModel: ObservableObject {
         let trigger = PowerTrigger(monitor: IOKitPowerSourceMonitor(),
                                    graceSeconds: preferences.graceSeconds)
         self.powerTrigger = trigger
+        let motion = MotionTrigger(
+            source: CameraFrameSource(framesPerSecond: 5),
+            detector: EgoMotionDetector(threshold: preferences.motionThreshold),
+            graceSeconds: preferences.graceSeconds)
+        self.motionTrigger = motion
         let siren = SirenResponse(player: AVSirenPlayer(),
                                   audio: CoreAudioOutputControl())
         self.siren = siren
@@ -49,7 +71,7 @@ final class AppModel: ObservableObject {
         let lock = ScreenLockResponse(locker: LoginFrameworkScreenLocker())
         self.screenLock = lock
 
-        engine = AlarmEngine(triggers: [trigger],
+        engine = AlarmEngine(triggers: [trigger, motion],
                              responses: [siren, lock],
                              clock: SystemClock(),
                              passcodes: passcodes,
@@ -57,6 +79,7 @@ final class AppModel: ObservableObject {
         engine.onStateChange = { [weak self] newState in
             self?.state = newState
             self?.updateCountdown(for: newState)
+            self?.refreshProtectionWarning()
             // Clear here (not just on the next fire) so a stale "sounding"
             // status cannot survive a disarm.
             guard case .firing = newState else {
@@ -77,6 +100,15 @@ final class AppModel: ObservableObject {
         siren.isEnabled = siren.isAvailable && preferences.isEnabled(siren.identifier)
         lock.isEnabled = lock.isAvailable && preferences.isEnabled(lock.identifier)
         trigger.isEnabled = trigger.isAvailable && preferences.isEnabled(trigger.identifier)
+        // Motion is the one feature that stays off until asked for: it holds
+        // the camera open, and the green light is hardware-enforced. Everything
+        // else defaults on; this one requires a deliberate decision.
+        motion.isEnabled = motion.isAvailable
+            && preferences.isEnabled(motion.identifier, default: false)
+        motionEnabled = motion.isActive
+        powerEnabled = trigger.isActive
+        motionSensitivity = MotionSensitivity.sensitivity(forThreshold: preferences.motionThreshold)
+        refreshProtectionWarning()
         sirenEnabled = siren.isActive
         screenLockEnabled = lock.isActive
         graceSeconds = preferences.graceSeconds
@@ -129,6 +161,20 @@ final class AppModel: ObservableObject {
     /// meets the passcode.
     var settingsLocked: Bool { isArmed }
 
+    /// Three different reasons arming can be refused, and telling the user the
+    /// wrong one is worse than saying nothing.
+    private var armRefusalReason: String {
+        if !powerEnabled && !motionEnabled {
+            return "Turn on at least one trigger in Settings — nothing is set to watch for anything."
+        }
+        if powerEnabled && !powerTrigger.canFireNow {
+            return motionEnabled
+                ? "Plug in the charger, or the charger trigger has nothing left to detect."
+                : "Plug in the charger to arm. The alarm fires when the charger is pulled."
+        }
+        return "Nothing can currently watch for a theft."
+    }
+
     /// A response the user can switch off. Only the siren and the screen lock
     /// today; trigger toggles stay hidden until a second trigger exists, since
     /// unchecking the only one just makes arming refuse.
@@ -153,6 +199,84 @@ final class AppModel: ObservableObject {
         warnIfNoResponsesLeft()
     }
 
+    var motionAvailable: Bool { motionTrigger.isAvailable }
+
+    func setPowerEnabled(_ enabled: Bool) {
+        guard !settingsLocked else { return }
+        let applied = enabled && powerTrigger.isAvailable
+        powerTrigger.isEnabled = applied
+        preferences.setEnabled(applied, for: powerTrigger.identifier)
+        powerEnabled = powerTrigger.isActive
+        refreshProtectionWarning()
+    }
+
+    func setMotionEnabled(_ enabled: Bool) {
+        guard !settingsLocked else { return }
+        guard enabled else {
+            motionTrigger.isEnabled = false
+            preferences.setEnabled(false, for: motionTrigger.identifier)
+            motionEnabled = false
+            stopCalibration()
+            return
+        }
+        // Ask for camera access here, when the user switches the feature on,
+        // rather than letting them discover at arm time that it was never
+        // granted. Switching on a feature that cannot run is how "Armed" comes
+        // to mean nothing is watching.
+        Task { [weak self] in
+            guard let self else { return }
+            let granted = await self.motionTrigger.requestAccess()
+            let applied = granted && self.motionTrigger.isAvailable
+            self.motionTrigger.isEnabled = applied
+            self.preferences.setEnabled(applied, for: self.motionTrigger.identifier)
+            self.motionEnabled = self.motionTrigger.isActive
+        self.refreshProtectionWarning()
+            self.refreshProtectionWarning()
+            self.settingsMessage = applied ? nil
+                : "LaptopAlarm needs camera access for this. Grant it in System Settings ▸ Privacy & Security ▸ Camera."
+        }
+    }
+
+    /// The live score readout. Only runs while the settings pane asks for it,
+    /// so the camera light is never on without a visible reason.
+    func startCalibration() {
+        guard !settingsLocked, motionTrigger.isAvailable, !isCalibrating else { return }
+        do {
+            try motionTrigger.startCalibration { [weak self] score in
+                self?.liveMotionScore = score.value
+            }
+            isCalibrating = true
+            settingsMessage = nil
+        } catch {
+            settingsMessage = "Could not open the camera. Grant access in System Settings ▸ Privacy & Security ▸ Camera."
+        }
+    }
+
+    /// Also called when the settings UI disappears. A calibration session left
+    /// running keeps the green camera light on with nothing on screen
+    /// explaining why, which is the most trust-destroying thing this app can do.
+    func stopCalibration() {
+        guard isCalibrating else { return }
+        motionTrigger.stopCalibration()
+        isCalibrating = false
+        liveMotionScore = nil
+    }
+
+    var motionThreshold: Double { motionTrigger.detector.threshold }
+
+    /// Presented as sensitivity, which runs the opposite way to the threshold it
+    /// sets. Takes effect immediately, including mid-calibration, so the user
+    /// can drag the slider while watching the live number and see the colour
+    /// change at the point they choose.
+    func setMotionSensitivity(_ sensitivity: Double) {
+        guard !settingsLocked else { return }
+        let threshold = MotionSensitivity.threshold(forSensitivity: sensitivity)
+        preferences.motionThreshold = threshold
+        let applied = preferences.motionThreshold
+        motionTrigger.detector.threshold = applied
+        motionSensitivity = MotionSensitivity.sensitivity(forThreshold: applied)
+    }
+
     var sirenAvailable: Bool { siren.isAvailable }
     var screenLockAvailable: Bool { screenLock.isAvailable }
 
@@ -173,7 +297,11 @@ final class AppModel: ObservableObject {
         preferences.graceSeconds = seconds
         // Read back: the store clamps, so this is the value actually applied.
         let applied = preferences.graceSeconds
-        powerTrigger.graceSeconds = applied
+        // Every trigger, not just the charger. The motion trigger was
+        // constructed once at launch and never updated, so a user who set a
+        // 30s grace and armed in the same session got 0s on it -- an accidental
+        // nudge meant an instant siren with no window to stop it.
+        for trigger in allTriggers { trigger.graceSeconds = applied }
         graceSeconds = applied
     }
 
@@ -211,14 +339,11 @@ final class AppModel: ObservableObject {
         return status == .enabled || status == .requiresApproval
     }
 
-    func changePasscode(current: String, new: String) {
+    func changePasscode(to newPasscode: String) {
         guard !settingsLocked else { return }
         do {
-            if try passcodes.changePasscode(current: current, new: new) {
-                settingsMessage = "Passcode changed."
-            } else {
-                settingsMessage = "That is not the current passcode."
-            }
+            try passcodes.setPasscode(newPasscode)
+            settingsMessage = "Passcode changed."
         } catch PasscodeError.empty {
             settingsMessage = "Enter a new passcode."
         } catch {
@@ -229,12 +354,13 @@ final class AppModel: ObservableObject {
     var isArmed: Bool { state != .disarmed }
     var isFiring: Bool { if case .firing = state { return true }; return false }
 
-    /// First-run only. Guarded because an unguarded overwrite is a disarm
-    /// bypass: set a new passcode mid-alarm, then use it to stop the siren
-    /// without ever knowing the old one. Changing an existing passcode goes
-    /// through `changePasscode`, which demands the current one.
+    /// Settable whenever disarmed. The armed guard is the whole protection: it
+    /// stops the obvious bypass of setting a new passcode mid-alarm and using it
+    /// to silence the siren. Demanding the *current* passcode on top adds
+    /// nothing — a Mac sitting unlocked and disarmed has already lost, and the
+    /// alarm is not what is protecting it at that point.
     func setPasscode(_ passcode: String) {
-        guard !settingsLocked, !passcodes.hasPasscode else { return }
+        guard !settingsLocked else { return }
         do {
             try passcodes.setPasscode(passcode)
             needsPasscodeSetup = false
@@ -251,20 +377,33 @@ final class AppModel: ObservableObject {
     }
 
     func arm() {
+        // The alarm needs exclusive use of the camera, and a calibration
+        // session left running would hold it open.
+        stopCalibration()
         do {
             try engine.arm()
             errorMessage = nil
             // Armed, but the Mac may sleep and stop noticing the charger. Not
             // an error: the alarm is still wired up.
-            warningMessage = engine.sleepAssertionFailed
-                ? "Armed, but macOS refused the keep-awake request. Keep the lid open — a sleeping Mac cannot hear the charger being pulled."
-                : nil
+            // Armed with less cover than the user asked for is a warning, not
+            // a failure: the triggers that did start are still watching.
+            var warnings: [String] = []
+            if engine.sleepAssertionFailed {
+                warnings.append("macOS refused the keep-awake request. Keep the lid open — a sleeping Mac cannot hear the charger being pulled.")
+            }
+            if engine.failedTriggers.contains("motion") {
+                warnings.append("The camera would not start, so movement is not being watched.")
+            }
+            warningMessage = warnings.isEmpty ? nil : "Armed, but: " + warnings.joined(separator: " ")
         } catch AlarmEngineError.noPasscodeSet {
             needsPasscodeSetup = true
             errorMessage = "Set a passcode before arming."
             warningMessage = nil
         } catch AlarmEngineError.noArmableTrigger {
-            errorMessage = "Plug in the charger to arm. The alarm fires when the charger is pulled."
+            errorMessage = armRefusalReason
+            warningMessage = nil
+        } catch AlarmEngineError.noTriggerStarted {
+            errorMessage = "Nothing could start watching. If movement detection is on, check camera access in System Settings ▸ Privacy & Security ▸ Camera."
             warningMessage = nil
         } catch {
             errorMessage = "Could not arm."

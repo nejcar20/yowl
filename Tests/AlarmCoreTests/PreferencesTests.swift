@@ -41,3 +41,20 @@ import Foundation
     prefs.graceSeconds = 999
     #expect(prefs.graceSeconds == 60)
 }
+
+// Motion is the one feature that must NOT default on: it holds the camera open
+// and lights the green indicator. Everything else defaults on so a user who
+// never opens settings gets the most protection.
+@Test func aFeatureCanOptOutOfTheDefaultOn() {
+    let prefs = InMemoryPreferences()
+    #expect(prefs.isEnabled("siren") == true)
+    #expect(prefs.isEnabled("motion", default: false) == false)
+}
+
+@Test func anExplicitChoiceOverridesTheDefault() {
+    let prefs = InMemoryPreferences()
+    prefs.setEnabled(true, for: "motion")
+    #expect(prefs.isEnabled("motion", default: false) == true)
+    prefs.setEnabled(false, for: "siren")
+    #expect(prefs.isEnabled("siren") == false)
+}

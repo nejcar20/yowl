@@ -6,6 +6,11 @@ public enum AlarmEngineError: Error, Equatable {
     /// produce a shield icon and zero protection. Deliberately blocks the arm
     /// instead of warning: "Armed" must mean protected.
     case noArmableTrigger
+    /// Triggers were enabled and could have fired, but none would start — a
+    /// camera that will not open, say. Distinct from `noArmableTrigger` because
+    /// telling the user to plug in the charger when the camera failed is
+    /// exactly the confusion this error exists to prevent.
+    case noTriggerStarted
 }
 
 /// Orchestrates triggers, responses and the state machine.
@@ -40,6 +45,9 @@ public final class AlarmEngine {
     /// app's assertion, Amphetamine) is still protected, so a warning beats a
     /// refusal. Cleared on every arm and disarm.
     public private(set) var sleepAssertionFailed = false
+    /// Identifiers of triggers the user enabled that would not start. Armed, but
+    /// with less cover than the user asked for.
+    public private(set) var failedTriggers: [String] = []
 
     public init(triggers: [any Trigger],
                 responses: [any Response],
@@ -74,6 +82,7 @@ public final class AlarmEngine {
         // The sleep assertion is best-effort: record the failure for the UI to
         // warn about, but keep arming. See `sleepAssertionFailed`.
         sleepAssertionFailed = false
+        failedTriggers = []
         do {
             try sleepAssertion?.acquire(reason: "LaptopAlarm armed")
         } catch {
@@ -86,11 +95,29 @@ public final class AlarmEngine {
         // rather than a .disarmed one the reducer would silently no-op.
         state = reduce(state, .arm, now: clock.now)
 
+        // A trigger that fails to start is not protection. Phase 1's only
+        // trigger could not fail, so swallowing the error was harmless; the
+        // camera trigger genuinely can fail (no device, access denied, another
+        // app holding it), and counting it would make "Armed" a lie.
+        var started: [any Trigger] = []
         for trigger in armable {
             let grace = trigger.graceSeconds
-            try? trigger.start { [weak self] id in
-                self?.handleTrigger(id, graceSeconds: grace)
+            do {
+                try trigger.start { [weak self] id in
+                    self?.handleTrigger(id, graceSeconds: grace)
+                }
+                started.append(trigger)
+            } catch {
+                failedTriggers.append(trigger.identifier)
             }
+        }
+        guard !started.isEmpty else {
+            // Nothing is watching. Undo and refuse, rather than showing a
+            // shield icon over no protection.
+            sleepAssertion?.release()
+            sleepAssertionFailed = false
+            state = reduce(state, .disarm, now: clock.now)
+            throw AlarmEngineError.noTriggerStarted
         }
     }
 
@@ -102,6 +129,7 @@ public final class AlarmEngine {
         triggers.forEach { $0.stop() }
         sleepAssertion?.release()
         sleepAssertionFailed = false
+        failedTriggers = []
         state = reduce(state, .disarm, now: clock.now)
         Task { for response in responses { await response.reset() } }
         return true

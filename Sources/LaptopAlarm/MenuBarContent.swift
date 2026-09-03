@@ -23,6 +23,14 @@ struct MenuBarContent: View {
                     .keyboardShortcut("a")
             }
 
+            // Above the arm button, not below it: this is the thing that
+            // decides whether arming is worth doing at all.
+            if !model.isArmed, let protection = model.protectionWarning {
+                Text(protection)
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+            }
+
             if let error = model.errorMessage {
                 Text(error).foregroundStyle(.red).font(.caption)
             }
