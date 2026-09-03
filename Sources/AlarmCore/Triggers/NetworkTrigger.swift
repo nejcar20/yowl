@@ -1,99 +1,123 @@
 import Foundation
-import CoreWLAN
+import Network
 
 public protocol NetworkMonitoring: AnyObject {
     var isAvailable: Bool { get }
     var isLinkUp: Bool { get }
-    func startMonitoring(_ onSample: @escaping (Bool) -> Void)
+    func startMonitoring(_ onChange: @escaping (Bool) -> Void)
     func stopMonitoring()
 }
 
-/// Watches whether the Wi-Fi link is up.
+/// Watches whether the Mac still has a Wi-Fi connection.
 ///
-/// Deliberately does NOT read the network name. `CWInterface.ssid()` returns nil
-/// without Location Services authorisation — verified on macOS 26.5 — so a
-/// trusted-network trigger would need a second privacy prompt on top of the
-/// camera. Knowing the name only distinguishes "moved to a different network",
-/// which is not the theft case: someone carrying the laptop away drops the link
-/// either way. Link state and signal strength read fine with no permission at
-/// all.
+/// Uses `NWPathMonitor` rather than CoreWLAN. `CWInterface.rssiValue()` returns
+/// 0 both when disassociated AND on any internal error — the SDK header says so
+/// in as many words — with no way to tell them apart, and the ambiguous case
+/// fails toward firing a maximum-volume siren. It also costs a ~5 ms XPC round
+/// trip to `airportd` per call, which was being made on the main actor once a
+/// second and synchronously from `canFireNow`.
+///
+/// `NWPathMonitor` is event-driven, needs no permission, does not conflate error
+/// with disconnection, and never touches the main thread.
+///
+/// Deliberately does not read the network name: `CWInterface.ssid()` requires
+/// Location Services authorisation, and knowing the name only distinguishes
+/// "moved to a different network", which is not the theft case.
 public final class WiFiLinkMonitor: NetworkMonitoring {
-    private let client = CWWiFiClient.shared()
-    private var pollTask: Task<Void, Never>?
+    private let monitor = NWPathMonitor(requiredInterfaceType: .wifi)
+    private let queue = DispatchQueue(label: "com.jernejkocica.laptopalarm.network")
+    private var isStarted = false
+    /// Last known state, updated on the main actor from the path handler.
+    private var lastKnownLinkUp = true
+    /// Stays main-actor isolated: only the Bool crosses the queue boundary.
+    private var onChange: ((Bool) -> Void)?
 
     public init() {}
 
-    public var isAvailable: Bool { client.interface() != nil }
+    /// Fixed for the process, as `Capability.isAvailable` requires. Asking the
+    /// system live would let a transient answer flip `isActive` while armed and
+    /// make the UI claim nothing is watching.
+    public let isAvailable = true
 
-    /// RSSI is zero when there is no association, which is a permission-free way
-    /// to ask "are we still on a network?".
-    public var isLinkUp: Bool {
-        guard let interface = client.interface(), interface.powerOn() else { return false }
-        return interface.rssiValue() != 0
-    }
+    public var isLinkUp: Bool { lastKnownLinkUp }
 
-    public func startMonitoring(_ onSample: @escaping (Bool) -> Void) {
+    public func startMonitoring(_ onChange: @escaping (Bool) -> Void) {
         stopMonitoring()
-        pollTask = Task { [weak self] in
-            while !Task.isCancelled {
+        self.onChange = onChange
+        monitor.pathUpdateHandler = { path in
+            let up = path.status == .satisfied
+            // The handler runs on our own queue; only `up` crosses, and the
+            // callback is read on the main actor where it lives.
+            Task { @MainActor [weak self] in
                 guard let self else { return }
-                onSample(self.isLinkUp)
-                try? await Task.sleep(for: .seconds(1))
+                self.lastKnownLinkUp = up
+                self.onChange?(up)
             }
         }
+        monitor.start(queue: queue)
+        isStarted = true
     }
 
     public func stopMonitoring() {
-        pollTask?.cancel()
-        pollTask = nil
+        guard isStarted else { return }
+        monitor.pathUpdateHandler = nil
+        monitor.cancel()
+        onChange = nil
+        isStarted = false
     }
-
-    isolated deinit { stopMonitoring() }
 }
 
-/// Fires when the Wi-Fi link stays down for several consecutive samples.
+/// Fires when Wi-Fi stays disconnected for long enough to mean the machine has
+/// left, rather than blinked.
 ///
-/// Requires a run of drops rather than one: Wi-Fi blips constantly, and firing
-/// a maximum-volume siren on a single dropped sample would make the machine
-/// unusable on any real network.
+/// The confirmation window is a duration, not a sample count. Access-point
+/// roaming, 802.11r transitions, DFS radar channel evacuation, router reboots
+/// and `airportd` restarts all routinely take several seconds, and each one
+/// ending in a maximum-volume siren in a public room is not a recoverable
+/// experience.
 public final class NetworkTrigger: Trigger {
     public let id = TriggerID("network")
     public var identifier: String { id.rawValue }
+    /// Off by default: losing Wi-Fi happens in ordinary use.
     public var isEnabled = false
     public var graceSeconds: TimeInterval
 
-    public let consecutiveDropsRequired: Int
+    /// How long the link must stay down before this counts as a theft.
+    public let confirmAfter: TimeInterval
 
     private let monitor: NetworkMonitoring
-    private var consecutiveDrops = 0
+    private let clock: AlarmClock
+    private var pendingConfirmation: ScheduledWork?
     private var onFire: ((TriggerID) -> Void)?
 
-    public init(monitor: NetworkMonitoring, consecutiveDropsRequired: Int = 3,
-                graceSeconds: TimeInterval) {
+    public init(monitor: NetworkMonitoring, clock: AlarmClock,
+                confirmAfter: TimeInterval = 30, graceSeconds: TimeInterval) {
         self.monitor = monitor
-        self.consecutiveDropsRequired = max(1, consecutiveDropsRequired)
+        self.clock = clock
+        self.confirmAfter = max(0, confirmAfter)
         self.graceSeconds = graceSeconds
     }
 
     public var isAvailable: Bool { monitor.isAvailable }
 
-    /// Already disconnected means there is no drop left to observe — the same
-    /// reasoning as the charger trigger refusing when the charger is already out.
+    /// Already disconnected means there is no departure left to observe — the
+    /// same rule the charger and lid triggers follow.
     public var canFireNow: Bool { monitor.isAvailable && monitor.isLinkUp }
 
     public func start(onFire: @escaping (TriggerID) -> Void) throws {
         self.onFire = onFire
-        // Clear any run from a previous session, or one new drop could complete
-        // it and fire immediately on arming.
-        consecutiveDrops = 0
+        cancelPendingConfirmation()
         monitor.startMonitoring { [weak self] isLinkUp in
             guard let self else { return }
             guard !isLinkUp else {
-                consecutiveDrops = 0
+                // Back before the window elapsed: a blink, not a departure.
+                self.cancelPendingConfirmation()
                 return
             }
-            consecutiveDrops += 1
-            if consecutiveDrops == consecutiveDropsRequired {
+            guard self.pendingConfirmation == nil else { return }
+            self.pendingConfirmation = self.clock.schedule(after: self.confirmAfter) { [weak self] in
+                guard let self else { return }
+                self.pendingConfirmation = nil
                 self.onFire?(self.id)
             }
         }
@@ -101,8 +125,13 @@ public final class NetworkTrigger: Trigger {
 
     public func stop() {
         monitor.stopMonitoring()
-        consecutiveDrops = 0
+        cancelPendingConfirmation()
         onFire = nil
+    }
+
+    private func cancelPendingConfirmation() {
+        pendingConfirmation?.cancel()
+        pendingConfirmation = nil
     }
 }
 
@@ -111,26 +140,26 @@ public final class FakeNetworkMonitor: NetworkMonitoring {
     public let isAvailable: Bool
     public private(set) var isLinkUp: Bool
     public private(set) var isMonitoring = false
-    private var onSample: ((Bool) -> Void)?
+    private var onChange: ((Bool) -> Void)?
 
     public init(isLinkUp: Bool, isAvailable: Bool = true) {
         self.isLinkUp = isLinkUp
         self.isAvailable = isAvailable
     }
 
-    public func startMonitoring(_ onSample: @escaping (Bool) -> Void) {
-        self.onSample = onSample
+    public func startMonitoring(_ onChange: @escaping (Bool) -> Void) {
+        self.onChange = onChange
         isMonitoring = true
     }
 
     public func stopMonitoring() {
         isMonitoring = false
-        onSample = nil
+        onChange = nil
     }
 
     public func simulate(isLinkUp: Bool) {
         self.isLinkUp = isLinkUp
-        onSample?(isLinkUp)
+        onChange?(isLinkUp)
     }
 }
 #endif

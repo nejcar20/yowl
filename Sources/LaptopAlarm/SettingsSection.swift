@@ -25,12 +25,12 @@ struct SettingsSection: View {
                         get: { model.powerEnabled },
                         set: { model.setPowerEnabled($0) }))
                     if model.lidAvailable {
-                        Toggle("Lid is closed", isOn: Binding(
+                        Toggle("Lid is closed part-way", isOn: Binding(
                             get: { model.lidEnabled },
                             set: { model.setLidEnabled($0) }))
                     }
                     if model.networkAvailable {
-                        Toggle("Wi-Fi is lost", isOn: Binding(
+                        Toggle("Wi-Fi is lost for 30 seconds", isOn: Binding(
                             get: { model.networkEnabled },
                             set: { model.setNetworkEnabled($0) }))
                     }
@@ -71,8 +71,7 @@ struct SettingsSection: View {
                             }
                         }
                     }
-                    if !model.powerEnabled && !model.motionEnabled
-                        && !model.lidEnabled && !model.networkEnabled {
+                    if model.nothingEnabled {
                         Text("Nothing is set to watch for anything — arming will refuse.")
                             .font(.caption2).foregroundStyle(.orange)
                     }

@@ -89,3 +89,91 @@ private func makeTrigger(_ sensor: FakeLidAngleSensor,
     #expect(makeTrigger(FakeLidAngleSensor(angle: 110)).canFireNow == true)
     #expect(makeTrigger(FakeLidAngleSensor(angle: 2)).canFireNow == false)
 }
+
+// --- The paths that hid three silent-death bugs ---
+
+// A failed read at arm time used to leave the trigger deaf for the entire
+// session while the UI still said "Armed". The baseline now adopts the first
+// reading that succeeds.
+@Test func aFailedReadAtArmTimeDoesNotKillTheTrigger() throws {
+    let sensor = FakeLidAngleSensor(angle: nil)
+    let trigger = makeTrigger(sensor)
+    var fired: TriggerID?
+    try trigger.start { fired = $0 }
+    sensor.simulate(angle: 110)   // sensor recovers; this becomes the baseline
+    sensor.simulate(angle: 95)
+    #expect(fired == TriggerID("lid"))
+}
+
+// A transient nil mid-session must be skipped, not treated as a reading.
+@Test func aTransientFailedReadIsSkippedNotFatal() throws {
+    let sensor = FakeLidAngleSensor(angle: 110)
+    let trigger = makeTrigger(sensor)
+    var fired: TriggerID?
+    try trigger.start { fired = $0 }
+    sensor.simulateReadFailure()
+    sensor.simulate(angle: 95)
+    #expect(fired == TriggerID("lid"), "one bad sample must not stop monitoring")
+}
+
+// Arming was permitted in a band where the fire threshold sat below the angle at
+// which the lid is already shut — so the alarm could only fire after clamshell
+// sleep had begun, which is the latency this trigger exists to avoid.
+@Test func aLidTooShallowToFireBeforeShuttingCannotArm() {
+    // shutAngle 5 + threshold 8 = 13: at 12 there is no room to fire in time.
+    #expect(makeTrigger(FakeLidAngleSensor(angle: 12), closingBy: 8).canFireNow == false)
+    #expect(makeTrigger(FakeLidAngleSensor(angle: 20), closingBy: 8).canFireNow == true)
+}
+
+@Test func canFireNowIsFalseWhenTheAngleCannotBeRead() {
+    #expect(makeTrigger(FakeLidAngleSensor(angle: nil)).canFireNow == false)
+}
+
+// --- The threshold itself, which no test previously pinned ---
+
+// Any value from 2 to 12 degrees passed the whole suite before this: the shipped
+// number was untested across a band spanning "fires when you tilt the screen" to
+// "fires only when nearly shut".
+@Test func theClosingThresholdIsExactlyWhatItClaims() throws {
+    let sensor = FakeLidAngleSensor(angle: 100)
+    let trigger = makeTrigger(sensor, closingBy: 25)
+    var fired: TriggerID?
+    try trigger.start { fired = $0 }
+    sensor.simulate(angle: 76)   // 24 degrees: just under
+    #expect(fired == nil)
+    sensor.simulate(angle: 75)   // 25 degrees: exactly at the threshold
+    #expect(fired == TriggerID("lid"))
+}
+
+@Test func aNonDefaultThresholdChangesBehaviour() throws {
+    let lenient = FakeLidAngleSensor(angle: 100)
+    let lenientTrigger = makeTrigger(lenient, closingBy: 40)
+    var lenientFired = false
+    try lenientTrigger.start { _ in lenientFired = true }
+    lenient.simulate(angle: 70)   // 30 degrees
+    #expect(lenientFired == false, "30 degrees must not fire a 40-degree threshold")
+
+    let strict = FakeLidAngleSensor(angle: 100)
+    let strictTrigger = makeTrigger(strict, closingBy: 10)
+    var strictFired = false
+    try strictTrigger.start { _ in strictFired = true }
+    strict.simulate(angle: 70)
+    #expect(strictFired == true)
+}
+
+// Pins the trigger's own teardown rather than the fake's: deleting the baseline
+// and handler reset from stop() must fail this.
+@Test func stoppingClearsTheBaselineSoTheNextArmRebaselines() throws {
+    let sensor = FakeLidAngleSensor(angle: 110)
+    let trigger = makeTrigger(sensor, closingBy: 30)
+    var fireCount = 0
+    try trigger.start { _ in fireCount += 1 }
+    trigger.stop()
+
+    // Re-arm at a much shallower angle. If stop() left the 110 baseline behind,
+    // this arms against it and fires immediately on the first sample.
+    sensor.simulate(angle: 60)
+    try trigger.start { _ in fireCount += 1 }
+    sensor.simulate(angle: 55)
+    #expect(fireCount == 0, "the new baseline must be 60, not the stale 110")
+}

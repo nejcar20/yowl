@@ -13,12 +13,21 @@ import Foundation
 public final class LidAngleTrigger: Trigger {
     public let id = TriggerID("lid")
     public var identifier: String { id.rawValue }
-    public var isEnabled = true
+    /// Off unless asked for. Closing your own laptop is an ordinary gesture, so
+    /// this must be a deliberate choice rather than something discovered by a
+    /// maximum-volume siren.
+    public var isEnabled = false
     public var graceSeconds: TimeInterval
 
-    /// Degrees of closing from the arming angle before the alarm fires. The
-    /// hinge reading jitters by about a degree while typing, so this must be
-    /// comfortably above that without waiting for the lid to be shut.
+    /// Degrees of closing from the arming angle before the alarm fires.
+    ///
+    /// The default is 30, not the 8 first chosen. Measured, the sensor does not
+    /// jitter at all (113 samples at 10 Hz: spread 0), so jitter was never the
+    /// constraint — deliberate screen adjustment is. People tilt a screen by
+    /// well over 8 degrees for glare, posture, or to show someone something, and
+    /// each of those would have meant a maximum-volume siren. At 30 the alarm
+    /// still fires roughly 80 degrees before the lid is shut on a typical
+    /// working angle, which keeps the head start this trigger exists for.
     public let closingByDegrees: Double
 
     /// Below this the lid is effectively already shut and cannot close further.
@@ -28,7 +37,7 @@ public final class LidAngleTrigger: Trigger {
     private var baseline: Double?
     private var onFire: ((TriggerID) -> Void)?
 
-    public init(sensor: LidAngleSensing, closingByDegrees: Double = 8,
+    public init(sensor: LidAngleSensing, closingByDegrees: Double = 30,
                 graceSeconds: TimeInterval) {
         self.sensor = sensor
         self.closingByDegrees = closingByDegrees
@@ -37,12 +46,13 @@ public final class LidAngleTrigger: Trigger {
 
     public var isAvailable: Bool { sensor.isAvailable }
 
-    /// An already-shut lid cannot be closed any further, so there is nothing
-    /// left for this trigger to detect — the same reasoning as the charger
-    /// trigger refusing when the charger is already out.
+    /// There must be room left to close by `closingByDegrees` BEFORE the lid is
+    /// shut. Gating on the shut angle alone armed the trigger in a band where it
+    /// could only fire after clamshell sleep had already begun — which is
+    /// exactly the latency this trigger exists to avoid.
     public var canFireNow: Bool {
         guard sensor.isAvailable, let angle = sensor.angle else { return false }
-        return angle > Self.shutAngle
+        return angle > Self.shutAngle + closingByDegrees
     }
 
     public func start(onFire: @escaping (TriggerID) -> Void) throws {
@@ -51,7 +61,14 @@ public final class LidAngleTrigger: Trigger {
         // immediately against a baseline from a previous session.
         baseline = sensor.angle
         sensor.startReading { [weak self] angle in
-            guard let self, let baseline = self.baseline else { return }
+            guard let self, let angle else { return }
+            // Adopt the first successful reading if the arming read failed.
+            // Leaving the baseline nil made the trigger deaf for the whole
+            // session while the UI still said "Armed".
+            guard let baseline = self.baseline else {
+                self.baseline = angle
+                return
+            }
             guard baseline - angle >= self.closingByDegrees else { return }
             self.onFire?(self.id)
         }

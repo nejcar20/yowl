@@ -30,6 +30,10 @@ final class AppModel: ObservableObject {
     /// Shown in the main panel, not buried in settings: a configuration that
     /// cannot protect anything has to be visible before the user walks away.
     @Published private(set) var protectionWarning: String?
+    /// Mirrors `ProtectionStatus` for the settings pane, so "nothing is enabled"
+    /// has exactly one implementation rather than a conjunction repeated at
+    /// every site that has to be edited when a trigger is added.
+    @Published private(set) var nothingEnabled = false
     @Published private(set) var motionSensitivity = MotionSensitivity.sensitivity(
         forThreshold: MotionSensitivity.defaultValue)
 
@@ -48,7 +52,9 @@ final class AppModel: ObservableObject {
 
     /// Recomputed whenever anything that affects coverage changes.
     private func refreshProtectionWarning() {
-        protectionWarning = ProtectionStatus(triggers: allTriggers).warning
+        let status = ProtectionStatus(triggers: allTriggers)
+        protectionWarning = status.warning
+        nothingEnabled = status == .nothingEnabled
     }
     private let preferences: PreferenceStoring
     private var countdownTask: Task<Void, Never>?
@@ -70,7 +76,9 @@ final class AppModel: ObservableObject {
         let lid = LidAngleTrigger(sensor: HIDLidAngleSensor(),
                                   graceSeconds: preferences.graceSeconds)
         self.lidTrigger = lid
+        let clock = SystemClock()
         let network = NetworkTrigger(monitor: WiFiLinkMonitor(),
+                                     clock: clock,
                                      graceSeconds: preferences.graceSeconds)
         self.networkTrigger = network
         let siren = SirenResponse(player: AVSirenPlayer(),
@@ -85,7 +93,7 @@ final class AppModel: ObservableObject {
 
         engine = AlarmEngine(triggers: [trigger, motion, lid, network],
                              responses: [siren, lock],
-                             clock: SystemClock(),
+                             clock: clock,
                              passcodes: passcodes,
                              sleepAssertion: IOKitSleepAssertion())
         engine.onStateChange = { [weak self] newState in
@@ -183,16 +191,11 @@ final class AppModel: ObservableObject {
 
     /// Three different reasons arming can be refused, and telling the user the
     /// wrong one is worse than saying nothing.
+    /// Derived from the same status the panel shows, so the refusal and the
+    /// warning can never disagree about why.
     private var armRefusalReason: String {
-        if !powerEnabled && !motionEnabled && !lidEnabled && !networkEnabled {
-            return "Turn on at least one trigger in Settings — nothing is set to watch for anything."
-        }
-        if powerEnabled && !powerTrigger.canFireNow {
-            return motionEnabled
-                ? "Plug in the charger, or the charger trigger has nothing left to detect."
-                : "Plug in the charger to arm. The alarm fires when the charger is pulled."
-        }
-        return "Nothing can currently watch for a theft."
+        ProtectionStatus(triggers: allTriggers).warning
+            ?? "Nothing can currently watch for a theft."
     }
 
     /// A response the user can switch off. Only the siren and the screen lock

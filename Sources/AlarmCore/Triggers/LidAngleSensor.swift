@@ -5,7 +5,7 @@ public protocol LidAngleSensing: AnyObject {
     var isAvailable: Bool { get }
     /// Current hinge angle in degrees, or nil if it cannot be read.
     var angle: Double? { get }
-    func startReading(_ onAngle: @escaping (Double) -> Void)
+    func startReading(_ onAngle: @escaping (Double?) -> Void)
     func stopReading()
 }
 
@@ -71,12 +71,17 @@ public final class HIDLidAngleSensor: LidAngleSensing {
     /// A Task rather than a Timer: it inherits this object's main-actor
     /// isolation, so the poll needs no escape hatch to touch state — the same
     /// reason the grace countdown uses one.
-    public func startReading(_ onAngle: @escaping (Double) -> Void) {
+    public func startReading(_ onAngle: @escaping (Double?) -> Void) {
         stopReading()
         pollTask = Task { [weak self] in
             while !Task.isCancelled {
-                guard let self, let angle = self.angle else { return }
-                onAngle(angle)
+                // Only a vanished `self` ends the loop. A failed read is
+                // reported as nil and the loop continues: IOKit returns errors
+                // transiently, and the cached device reference goes stale across
+                // sleep and HID re-enumeration. Exiting here left lid monitoring
+                // permanently dead with no error and no way to restart it.
+                guard let self else { return }
+                onAngle(self.angle)
                 try? await Task.sleep(for: .milliseconds(100))
             }
         }
@@ -95,14 +100,21 @@ public final class FakeLidAngleSensor: LidAngleSensing {
     public let isAvailable: Bool
     public private(set) var angle: Double?
     public private(set) var isReading = false
-    private var onAngle: ((Double) -> Void)?
+    private var onAngle: ((Double?) -> Void)?
 
-    public init(angle: Double, isAvailable: Bool = true) {
+    /// `angle` is optional so tests can exercise a failed read — the path that
+    /// hid two silent-death bugs because it could not be constructed.
+    public init(angle: Double?, isAvailable: Bool = true) {
         self.angle = angle
         self.isAvailable = isAvailable
     }
 
-    public func startReading(_ onAngle: @escaping (Double) -> Void) {
+    public func simulateReadFailure() {
+        angle = nil
+        onAngle?(nil)
+    }
+
+    public func startReading(_ onAngle: @escaping (Double?) -> Void) {
         self.onAngle = onAngle
         isReading = true
     }
