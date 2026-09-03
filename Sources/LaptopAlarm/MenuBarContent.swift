@@ -31,6 +31,10 @@ struct MenuBarContent: View {
                     .foregroundStyle(.orange)
             }
 
+            if let startup = model.startupMessage {
+                Text(startup).font(.caption).foregroundStyle(.orange)
+            }
+
             if let error = model.errorMessage {
                 Text(error).foregroundStyle(.red).font(.caption)
             }

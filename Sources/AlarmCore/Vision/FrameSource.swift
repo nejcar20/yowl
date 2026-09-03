@@ -2,6 +2,7 @@
 import Foundation
 import AVFoundation
 import CoreVideo
+import CoreImage
 import os
 
 public enum FrameSourceError: Error, Equatable {
@@ -10,6 +11,7 @@ public enum FrameSourceError: Error, Equatable {
 }
 
 public protocol FrameSourcing: AnyObject {
+    /// Hardware capability, fixed for the process.
     var isAvailable: Bool { get }
     /// Raises the capture rate while the user is watching a live readout.
     func setHighRate(_ high: Bool)
@@ -26,7 +28,7 @@ public protocol FrameSourcing: AnyObject {
 /// size. The green camera light stays on for as long as this runs; that is
 /// hardware-enforced and cannot be suppressed, which is why motion detection is
 /// opt-in rather than on by default.
-public final class CameraFrameSource: NSObject, FrameSourcing,
+public final class CameraFrameSource: NSObject, FrameSourcing, StillCapturing,
                                       AVCaptureVideoDataOutputSampleBufferDelegate {
     /// Read from the capture queue, so these must not be main-actor isolated.
     public nonisolated let targetWidth = 320
@@ -43,9 +45,33 @@ public final class CameraFrameSource: NSObject, FrameSourcing,
     /// aborts the process on the first real frame. A lock rather than a
     /// suppression: this state genuinely is shared across threads, and saying
     /// so is the point.
-    private struct CaptureState {
+    /// Resets only the per-session fields. Extracted so a test can reach it:
+    /// assigning a whole fresh `CaptureState` here silently wiped
+    /// `retainStills` through the memberwise init's defaults, and `start()`
+    /// throws before this point without a camera, so nothing could catch it.
+    nonisolated static func resetForNewSession(_ state: inout CaptureState) {
+        state.lastDelivery = .distantPast
+        state.isRunning = true
+        state.buffer.removeAll()
+        state.latestStill = nil
+    }
+
+    nonisolated struct CaptureState {
         var lastDelivery = Date.distantPast
         var isRunning = false
+        /// Retained only while evidence capture is switched on. The video output
+        /// already delivers full-resolution frames that get downscaled for
+        /// motion, so keeping the last one costs one buffer and gives a photo
+        /// from the exact moment the alarm fired — no second output, no second
+        /// session, and nothing to warm up.
+        var retainStills = false
+        var latestStill: Data?
+        /// The run-up: recent frames, oldest first, so the alarm can save the
+        /// moments *before* it fired. Sampled at about 1 Hz rather than every
+        /// frame — a photograph every 200 ms of the same approaching face is
+        /// bandwidth without information.
+        var buffer: [TimestampedStill] = []
+        var lastBuffered = Date.distantPast
     }
     private let captureState = OSAllocatedUnfairLock(initialState: CaptureState())
     private nonisolated let minimumInterval: TimeInterval
@@ -70,17 +96,48 @@ public final class CameraFrameSource: NSObject, FrameSourcing,
         }
     }
 
-    public var isAvailable: Bool {
-        AVCaptureDevice.default(for: .video) != nil
-            && AVCaptureDevice.authorizationStatus(for: .video) != .denied
-            && AVCaptureDevice.authorizationStatus(for: .video) != .restricted
-    }
+    /// Hardware only, sampled once. `Capability.isAvailable` is filtered by the
+    /// engine at construction, so folding permission into it meant a Mac that
+    /// launched with camera access denied dropped motion and photographs
+    /// permanently — granting access afterwards could not bring them back
+    /// without a relaunch, while the toggles happily reported themselves on.
+    /// Permission is user configuration and is handled by `requestAccess` and
+    /// `isEnabled`, both of which are re-read.
+    public let isAvailable = AVCaptureDevice.default(for: .video) != nil
 
     public func setHighRate(_ high: Bool) {
         isCalibrationRate.withLock { $0 = high }
     }
 
+    /// How many seconds of run-up to keep. Ten seconds at 1 Hz is roughly
+    /// 2-4 MB of JPEG and covers someone walking up to the machine.
+    public nonisolated static let bufferedStillCount = 10
+    private nonisolated static let bufferInterval: TimeInterval = 1
+
+    /// Turning this on makes the source keep the most recent full-resolution
+    /// frame, and a short history before it.
+    public func setRetainsStills(_ retain: Bool) {
+        captureState.withLock {
+            $0.retainStills = retain
+            if !retain {
+                $0.latestStill = nil
+                $0.buffer.removeAll()
+            }
+        }
+    }
+
+    public func bufferedStills() -> [TimestampedStill] {
+        captureState.withLock { $0.buffer }
+    }
+
+    public func clearBufferedStills() {
+        captureState.withLock { $0.buffer.removeAll() }
+    }
+
     public func start(onFrame: @escaping (GrayscaleFrame) -> Void) throws {
+        // Read before `stop()` clears anything, and before the session is
+        // configured: the preset depends on it.
+        let wantsStills = captureState.withLock { $0.retainStills }
         stop()
         guard let device = AVCaptureDevice.default(for: .video) else {
             throw FrameSourceError.cameraUnavailable
@@ -89,10 +146,17 @@ public final class CameraFrameSource: NSObject, FrameSourcing,
             throw FrameSourceError.accessDenied
         }
         self.onFrame = onFrame
-        captureState.withLock { $0 = CaptureState(lastDelivery: .distantPast, isRunning: true) }
+        // Reset only the per-session fields. Assigning a fresh CaptureState
+        // here silently wiped `retainStills` through the memberwise init's
+        // defaults, so evidence capture was switched off on every start and no
+        // photograph was ever taken.
+        captureState.withLock { Self.resetForNewSession(&$0) }
 
         session.beginConfiguration()
-        session.sessionPreset = .low
+        // Motion downscales to 320x240 by sampling, so a higher preset costs it
+        // almost nothing — but a `.low` frame is useless as evidence of who took
+        // the machine. Only pay for the bandwidth when stills are wanted.
+        session.sessionPreset = wantsStills ? .high : .low
         if let input = try? AVCaptureDeviceInput(device: device), session.canAddInput(input) {
             session.addInput(input)
         } else {
@@ -106,6 +170,10 @@ public final class CameraFrameSource: NSObject, FrameSourcing,
         if session.canAddOutput(output) { session.addOutput(output) }
         session.commitConfiguration()
         session.startRunning()
+    }
+
+    public func captureStill() -> Data? {
+        captureState.withLock { $0.latestStill }
     }
 
     public func stop() {
@@ -143,12 +211,46 @@ public final class CameraFrameSource: NSObject, FrameSourcing,
             return true
         }
         guard shouldDeliver else { return }
+        if captureState.withLock({ $0.retainStills }),
+           let jpeg = Self.jpeg(from: sampleBuffer) {
+            captureState.withLock { state in
+                // Re-check: encoding takes milliseconds, and a toggle-off during
+                // it would otherwise leave a full-resolution photograph of the
+                // user resident after they asked for it to stop.
+                guard state.retainStills else { return }
+                state.latestStill = jpeg
+                guard now.timeIntervalSince(state.lastBuffered) >= Self.bufferInterval
+                else { return }
+                state.lastBuffered = now
+                state.buffer.append(TimestampedStill(jpeg: jpeg, capturedAt: now))
+                if state.buffer.count > Self.bufferedStillCount {
+                    state.buffer.removeFirst(state.buffer.count - Self.bufferedStillCount)
+                }
+            }
+        }
         guard let frame = Self.grayscaleFrame(from: sampleBuffer,
                                               width: targetWidth, height: targetHeight)
         else { return }
         // Only `frame` crosses the thread boundary; the handler is read on the
         // main actor, where it lives.
         Task { @MainActor [weak self] in self?.onFrame?(frame) }
+    }
+
+    /// Encodes the full-resolution frame as JPEG for evidence.
+    /// Shared: allocating a CIContext per frame measured ~2x the encode cost,
+    /// for work that runs continuously for hours while armed.
+    nonisolated static let sharedCIContext = CIContext(options: nil)
+
+    nonisolated static func jpeg(from sampleBuffer: CMSampleBuffer,
+                                 quality: Double = 0.8) -> Data? {
+        guard let buffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return nil }
+        let image = CIImage(cvPixelBuffer: buffer)
+        let context = sharedCIContext
+        guard let colorSpace = image.colorSpace ?? CGColorSpace(name: CGColorSpace.sRGB)
+        else { return nil }
+        return context.jpegRepresentation(of: image, colorSpace: colorSpace,
+                                          options: [kCGImageDestinationLossyCompressionQuality
+                                                    as CIImageRepresentationOption: quality])
     }
 
     /// Downscales and converts BGRA to 8-bit grayscale.
@@ -179,7 +281,10 @@ public final class CameraFrameSource: NSObject, FrameSourcing,
 
 #if DEBUG
 public final class FakeFrameSource: FrameSourcing {
-    public let isAvailable: Bool
+    /// A `var` so a test can flip it after construction. As a `let` it made
+    /// "availability is captured at construction" unobservable, and reverting
+    /// that fix passed the entire suite.
+    public var isAvailable: Bool
     public private(set) var isRunning = false
     public private(set) var startCallCount = 0
     private var onFrame: ((GrayscaleFrame) -> Void)?

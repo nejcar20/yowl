@@ -88,6 +88,23 @@ struct SettingsSection: View {
                             get: { model.screenLockEnabled },
                             set: { model.setScreenLockEnabled($0) }))
                     }
+                    if model.snapshotAvailable {
+                        Toggle("Photograph whoever is there", isOn: Binding(
+                            get: { model.snapshotEnabled },
+                            set: { model.setSnapshotEnabled($0) }))
+                        Text("Saved on this Mac. The camera light stays on while armed.")
+                            .font(.caption2).foregroundStyle(.secondary)
+                    }
+                    // Outside the camera gate on purpose: the privacy policy
+                    // promises this route to anyone holding photographs, and a
+                    // Mac with no camera — or with access revoked — still has
+                    // whatever was captured before.
+                    if model.savedEvidenceCount > 0 {
+                        Button("Show \(model.savedEvidenceCount) saved photo\(model.savedEvidenceCount == 1 ? "" : "s")") {
+                            model.revealEvidenceFolder()
+                        }
+                        .font(.caption2)
+                    }
                 }
 
                 Divider()
@@ -108,6 +125,27 @@ struct SettingsSection: View {
                          ? "The siren fires the instant the charger is pulled."
                          : "You get \(Int(model.graceSeconds))s to disarm before the siren starts.")
                         .font(.caption2).foregroundStyle(.secondary)
+                }
+
+                Divider()
+
+                Group {
+                    Toggle("Send an alert to my phone", isOn: Binding(
+                        get: { model.alertEnabled },
+                        set: { model.setAlertEnabled($0) }))
+                    if model.alertEnabled {
+                        Text("Sent through ntfy.sh, including any photos. Install the free ntfy app and subscribe to your private link.")
+                            .font(.caption2).foregroundStyle(.secondary)
+                        HStack {
+                            Button("Copy my link") { model.copyAlertLink() }
+                            Button("Send test") { model.sendTestAlert() }
+                        }
+                        .font(.caption2)
+                        Text("Keep the link private — anyone who has it can see your alerts and photos. Photos are deleted from ntfy after a few hours; the copies on this Mac are the ones that last.")
+                            .font(.caption2).foregroundStyle(.secondary)
+                        Button("Create a new link") { model.regenerateAlertTopic() }
+                            .font(.caption2)
+                    }
                 }
 
                 Divider()

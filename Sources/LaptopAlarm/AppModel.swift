@@ -23,6 +23,15 @@ final class AppModel: ObservableObject {
     @Published private(set) var settingsMessage: String?
     @Published private(set) var powerEnabled = true
     @Published private(set) var motionEnabled = false
+    @Published private(set) var snapshotEnabled = false
+    @Published private(set) var alertEnabled = false
+    @Published private(set) var alertTopic = ""
+    /// Surfaced once at launch when something had to be repaired or switched off
+    /// behind the user's back.
+    @Published private(set) var startupMessage: String?
+
+    /// Dismissable: it describes a one-off repair at launch, not a live state.
+    func dismissStartupMessage() { startupMessage = nil }
     @Published private(set) var lidEnabled = false
     @Published private(set) var liveMotionScore: Double?
     @Published private(set) var isCalibrating = false
@@ -42,6 +51,11 @@ final class AppModel: ObservableObject {
     private let screenLock: ScreenLockResponse
     private let powerTrigger: PowerTrigger
     private let motionTrigger: MotionTrigger
+    private let snapshotResponse: SnapshotResponse
+    private let camera: CameraFrameSource
+    private let evidenceStore: FileEvidenceStore
+    private let alertResponse: AlertResponse
+    private let topicStore: KeychainTopicStore
     private let lidTrigger: LidAngleTrigger
     /// One list so a per-trigger setting cannot reach some triggers and not others.
     private var allTriggers: [any Trigger] {
@@ -66,8 +80,14 @@ final class AppModel: ObservableObject {
         let trigger = PowerTrigger(monitor: IOKitPowerSourceMonitor(),
                                    graceSeconds: preferences.graceSeconds)
         self.powerTrigger = trigger
+        // One camera source shared by motion detection and evidence capture:
+        // two sessions on one device is a conflict, and reusing the frames the
+        // detector already receives means a photo from the exact moment the
+        // alarm fired rather than one taken a second later.
+        let camera = CameraFrameSource(framesPerSecond: 5)
+        self.camera = camera
         let motion = MotionTrigger(
-            source: CameraFrameSource(framesPerSecond: 5),
+            source: camera,
             detector: EgoMotionDetector(threshold: preferences.motionThreshold),
             graceSeconds: preferences.graceSeconds)
         self.motionTrigger = motion
@@ -83,10 +103,21 @@ final class AppModel: ObservableObject {
         // AppModel is itself a single @StateObject for the app's lifetime, so
         // this initializer is that one place.
         let lock = ScreenLockResponse(locker: LoginFrameworkScreenLocker())
+        let evidenceStore = FileEvidenceStore()
+        self.evidenceStore = evidenceStore
+        let snapshot = SnapshotResponse(camera: camera, store: evidenceStore, clock: clock)
+        self.snapshotResponse = snapshot
+        let topicStore = KeychainTopicStore()
+        self.topicStore = topicStore
+        let alert = AlertResponse(
+            transport: NtfyTransport(topic: topicStore.topic ?? "",
+                                     http: URLSessionHTTPClient()),
+            evidence: evidenceStore)
+        self.alertResponse = alert
         self.screenLock = lock
 
         engine = AlarmEngine(triggers: [trigger, motion, lid],
-                             responses: [siren, lock],
+                             responses: [siren, lock, snapshot, alert],
                              clock: clock,
                              passcodes: passcodes,
                              sleepAssertion: IOKitSleepAssertion())
@@ -123,6 +154,45 @@ final class AppModel: ObservableObject {
         // use — closing your own laptop, walking out of Wi-Fi range — so they
         // are a deliberate choice rather than something to discover by accident.
         lid.isEnabled = lid.isAvailable && preferences.isEnabled(lid.identifier, default: false)
+        snapshot.isEnabled = snapshot.isAvailable
+            && preferences.isEnabled(snapshot.identifier, default: false)
+        camera.setRetainsStills(snapshot.isEnabled)
+        snapshotEnabled = snapshot.isActive
+        // A stored preference of "on" with no topic in the Keychain used to leave
+        // the toggle reading on while fire() returned silently forever -- and
+        // the privacy policy itself invites users to delete that Keychain item.
+        // Mint a replacement, or turn the feature off and say so.
+        switch AlertStartupDecision.decide(
+            preferenceEnabled: preferences.isEnabled(alert.identifier, default: false),
+            read: topicStore.readTopic()) {
+        case .leaveOff:
+            break
+        case let .use(existing):
+            alert.isEnabled = true
+            alertTopic = existing
+        case .mint:
+            if let minted = topicStore.topicCreatingIfNeeded() {
+                alert.isEnabled = true
+                alertTopic = minted
+                alert.replaceTransport(NtfyTransport(topic: minted,
+                                                     http: URLSessionHTTPClient()))
+                startupMessage = "Your alert link was missing, so a new one was created. Re-subscribe on your phone."
+            } else {
+                alert.isEnabled = false
+                preferences.setEnabled(false, for: alert.identifier)
+                startupMessage = "Phone alerts are off: a new alert link could not be created."
+            }
+        case .pauseUnreadable:
+            // Never mint here: minting deletes before adding, so a link that is
+            // present but momentarily unreadable would be destroyed. That is
+            // most likely at login, before the Keychain is usable — which is
+            // exactly when a login item starts. The stored preference is left
+            // alone so the link comes back on the next good read.
+            alert.isEnabled = false
+            startupMessage = "Phone alerts are paused: the alert link could not be read. Your existing link is intact — switch alerts off and on once you are logged in."
+        }
+        alertEnabled = alert.isActive
+        alert.includesPhotographs = snapshot.isActive
         motionEnabled = motion.isActive
         powerEnabled = trigger.isActive
         lidEnabled = lid.isActive
@@ -214,6 +284,126 @@ final class AppModel: ObservableObject {
     }
 
     var motionAvailable: Bool { motionTrigger.isAvailable }
+    var snapshotAvailable: Bool { snapshotResponse.isAvailable }
+    var evidenceFolder: URL { evidenceStore.directoryURL }
+    var savedEvidenceCount: Int { evidenceStore.allItems().count }
+
+    func setSnapshotEnabled(_ enabled: Bool) {
+        guard !settingsLocked else { return }
+        guard enabled else {
+            snapshotResponse.isEnabled = false
+            preferences.setEnabled(false, for: snapshotResponse.identifier)
+            snapshotEnabled = false
+            camera.setRetainsStills(false)
+            alertResponse.includesPhotographs = false
+            return
+        }
+        // Same permission the motion trigger needs, asked for at the same point:
+        // when the feature is switched on, not discovered at arm time.
+        Task { [weak self] in
+            guard let self else { return }
+            let granted = await self.camera.requestAccess()
+            let applied = granted && self.snapshotResponse.isAvailable
+            self.snapshotResponse.isEnabled = applied
+            self.preferences.setEnabled(applied, for: self.snapshotResponse.identifier)
+            self.snapshotEnabled = self.snapshotResponse.isActive
+            self.camera.setRetainsStills(applied)
+            // The policy promises photographs are attached only when
+            // photographs are on. Keeping this in step is what makes that true.
+            self.alertResponse.includesPhotographs = applied
+            self.settingsMessage = applied ? nil
+                : "LaptopAlarm needs camera access to photograph a thief. Grant it in System Settings ▸ Privacy & Security ▸ Camera."
+        }
+    }
+
+    /// The URL a phone subscribes to. Shown once, for pairing, and treated as a
+    /// secret everywhere else: anyone holding it can read the photographs.
+    var alertSubscribeURL: String {
+        alertTopic.isEmpty ? "" : "https://ntfy.sh/\(alertTopic)"
+    }
+
+    func setAlertEnabled(_ enabled: Bool) {
+        guard !settingsLocked else { return }
+        // Whatever the launch message said is no longer what is happening.
+        startupMessage = nil
+        guard enabled else {
+            alertResponse.isEnabled = false
+            preferences.setEnabled(false, for: alertResponse.identifier)
+            alertEnabled = false
+            return
+        }
+        // Creating the topic on first enable, not at launch, so a user who never
+        // turns this on never has one.
+        guard let topic = topicStore.topicCreatingIfNeeded() else {
+            alertEnabled = false
+            preferences.setEnabled(false, for: alertResponse.identifier)
+            settingsMessage = "Could not create a private alert link. Try again, or check that the Keychain is unlocked."
+            return
+        }
+        alertTopic = topic
+        rebuildAlertTransport()
+        alertResponse.isEnabled = true
+        preferences.setEnabled(true, for: alertResponse.identifier)
+        alertEnabled = alertResponse.isActive
+    }
+
+    /// Replaces the topic entirely. The old one keeps working for anyone who
+    /// already has it, which is the point of being able to rotate.
+    func regenerateAlertTopic() {
+        guard !settingsLocked else { return }
+        startupMessage = nil
+        guard topicStore.reset() else {
+            settingsMessage = "Could not remove the old link, so a new one was not created. The old link is still active — try again."
+            return
+        }
+        guard let topic = topicStore.topicCreatingIfNeeded() else {
+            settingsMessage = "Could not create a new link. The old one is no longer in use, so alerts are off until this succeeds."
+            alertResponse.isEnabled = false
+            preferences.setEnabled(false, for: alertResponse.identifier)
+            alertEnabled = false
+            alertTopic = ""
+            return
+        }
+        alertTopic = topic
+        rebuildAlertTransport()
+        settingsMessage = "New link created. Re-subscribe on your phone; the old link no longer receives alerts from this Mac."
+    }
+
+    func copyAlertLink() {
+        guard !alertSubscribeURL.isEmpty else { return }
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        // Marked concealed so clipboard managers (Paste, Maccy, Alfred) do not
+        // file this away in a searchable history. That marker is a third-party
+        // convention, not an Apple API, so it says nothing about Universal
+        // Clipboard — but it is the credential the policy tells users to treat
+        // like a password, and this is the protection available.
+        pasteboard.setData(Data(), forType: .init("org.nspasteboard.ConcealedType"))
+        pasteboard.setString(alertSubscribeURL, forType: .string)
+        settingsMessage = "Link copied. Open it on your phone, or subscribe to it in the ntfy app."
+    }
+
+    private func rebuildAlertTransport() {
+        alertResponse.replaceTransport(
+            NtfyTransport(topic: alertTopic, http: URLSessionHTTPClient()))
+    }
+
+    func sendTestAlert() {
+        guard alertResponse.isAvailable else { return }
+        Task { [weak self] in
+            guard let self else { return }
+            let ok = await self.alertResponse.sendTest()
+            self.settingsMessage = ok
+                ? "Test alert sent. It should be on your phone now."
+                : (self.alertTopic.isEmpty
+                   ? "There is no alert link yet. Switch phone alerts off and on again to create one."
+                   : "Could not reach ntfy.sh. Check the network and try again.")
+        }
+    }
+
+    func revealEvidenceFolder() {
+        NSWorkspace.shared.open(evidenceStore.directoryURL)
+    }
 
     var lidAvailable: Bool { lidTrigger.isAvailable }
 
@@ -408,6 +598,19 @@ final class AppModel: ObservableObject {
         stopCalibration()
         do {
             try engine.arm()
+            // Evidence capture needs frames flowing, and only the motion trigger
+            // starts the camera. With snapshots on but motion off, nothing would
+            // have been feeding it and every photo would have been empty.
+            // Starting it cold when the alarm fires is not an option: the first
+            // frame takes long enough that the thief is gone.
+            // Swallowing this meant photographs could be switched on, the toggle
+            // could read on, and nothing would ever be captured — with the
+            // camera revoked in System Settings, say — and the user would never
+            // be told. Motion warns at arm time; photographs must too.
+            var photographsFailed = false
+            if snapshotEnabled && !motionEnabled {
+                do { try camera.start { _ in } } catch { photographsFailed = true }
+            }
             errorMessage = nil
             // Armed, but the Mac may sleep and stop noticing the charger. Not
             // an error: the alarm is still wired up.
@@ -419,6 +622,9 @@ final class AppModel: ObservableObject {
             }
             if engine.failedTriggers.contains("motion") {
                 warnings.append("The camera would not start, so movement is not being watched.")
+            }
+            if photographsFailed {
+                warnings.append("The camera would not start, so no photographs will be taken. Check camera access in System Settings ▸ Privacy & Security.")
             }
             warningMessage = warnings.isEmpty ? nil : "Armed, but: " + warnings.joined(separator: " ")
         } catch AlarmEngineError.noPasscodeSet {
@@ -439,6 +645,9 @@ final class AppModel: ObservableObject {
 
     func disarm() {
         if engine.disarm(passcode: passcodeEntry) {
+            // Release the camera if we were the ones holding it open. The motion
+            // trigger releases its own.
+            if snapshotEnabled && !motionEnabled { camera.stop() }
             passcodeEntry = ""
             errorMessage = nil
             warningMessage = nil

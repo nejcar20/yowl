@@ -112,3 +112,21 @@ private func makeTrigger(_ source: FakeFrameSource,
     trigger.stopCalibration()
     #expect(source.isRunning == false)
 }
+
+// The engine filters availability once at construction, so a trigger that
+// re-reads it live gets stranded: a Mac launching with camera access denied
+// dropped motion permanently, and granting access afterwards could not bring it
+// back while the toggle still read on. Capturing it at construction is what
+// prevents that — and with the fake's flag as a `let` this was unobservable, so
+// reverting the fix passed all 224 tests.
+@Test func availabilityIsCapturedAtConstructionNotReadLive() {
+    let source = FakeFrameSource(isAvailable: true)
+    let trigger = makeTrigger(source)
+    #expect(trigger.isAvailable == true)
+    source.isAvailable = false        // as if access were revoked mid-session
+    #expect(trigger.isAvailable == true, "must not change after construction")
+}
+
+@Test func aMacWithNoCameraHasNoMotionTrigger() {
+    #expect(makeTrigger(FakeFrameSource(isAvailable: false)).isAvailable == false)
+}

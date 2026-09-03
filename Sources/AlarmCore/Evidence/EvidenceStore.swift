@@ -1,0 +1,116 @@
+import Foundation
+
+/// One photograph taken because the alarm fired.
+public struct EvidenceItem: Equatable, Sendable {
+    public let jpeg: Data
+    public let capturedAt: Date
+    /// Which trigger fired, so a photo can be read months later without guessing.
+    public let trigger: String
+
+    public init(jpeg: Data, capturedAt: Date, trigger: String) {
+        self.jpeg = jpeg
+        self.capturedAt = capturedAt
+        self.trigger = trigger
+    }
+}
+
+public protocol EvidenceStoring: AnyObject {
+    @discardableResult
+    func save(_ item: EvidenceItem) -> URL?
+    func allItems() -> [URL]
+    /// The newest photographs, for an alert to attach.
+    func recentJPEGs(limit: Int) -> [Data]
+}
+
+/// Writes evidence to Application Support, one JPEG per shot.
+///
+/// Local only. Photographs of whoever is in front of the machine are the most
+/// sensitive thing this app produces, so they stay on the disk of the machine
+/// that took them unless the user explicitly sets up somewhere to send them.
+public final class FileEvidenceStore: EvidenceStoring {
+    private let directory: URL
+    private let keepingMostRecent: Int
+
+    public init(directory: URL? = nil, keepingMostRecent: Int = 40) {
+        self.keepingMostRecent = max(1, keepingMostRecent)
+        self.directory = directory ?? FileManager.default
+            .urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("LaptopAlarm/Evidence", isDirectory: true)
+        try? FileManager.default.createDirectory(at: self.directory,
+                                                 withIntermediateDirectories: true)
+    }
+
+    @discardableResult
+    public func save(_ item: EvidenceItem) -> URL? {
+        // Milliseconds, not seconds. At one-second resolution the run-up's last
+        // frame and the first live shot landed on the same filename, so one
+        // photograph was silently overwritten on roughly half of all firings --
+        // the same defect as before, one level down.
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd'T'HH-mm-ss.SSS"
+        formatter.timeZone = TimeZone(identifier: "UTC")
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        let stamp = formatter.string(from: item.capturedAt)
+        let url = directory.appendingPathComponent("\(stamp)-\(item.trigger).jpg")
+        do {
+            try item.jpeg.write(to: url, options: .atomic)
+            prune()
+            return url
+        } catch {
+            return nil
+        }
+    }
+
+    public func allItems() -> [URL] {
+        (try? FileManager.default.contentsOfDirectory(at: directory,
+                                                      includingPropertiesForKeys: nil))?
+            .filter { $0.pathExtension == "jpg" }
+            .sorted { $0.lastPathComponent > $1.lastPathComponent } ?? []
+    }
+
+    /// Keeps the newest and deletes the rest. Evidence accumulates every time
+    /// the alarm fires, and most of those will be the owner tripping their own
+    /// alarm, so leaving it unbounded fills the disk with pictures of them.
+    private func prune() {
+        let items = allItems()
+        guard items.count > keepingMostRecent else { return }
+        for url in items.dropFirst(keepingMostRecent) {
+            try? FileManager.default.removeItem(at: url)
+        }
+    }
+
+    public func recentJPEGs(limit: Int) -> [Data] {
+        allItems().prefix(limit).compactMap { try? Data(contentsOf: $0) }
+    }
+
+    public var directoryURL: URL { directory }
+}
+
+#if DEBUG
+public final class InMemoryEvidenceStore: EvidenceStoring {
+    public private(set) var saved: [EvidenceItem] = []
+    private let keepingMostRecent: Int
+
+    public init(keepingMostRecent: Int = 40) {
+        self.keepingMostRecent = max(1, keepingMostRecent)
+    }
+
+    @discardableResult
+    public func save(_ item: EvidenceItem) -> URL? {
+        saved.append(item)
+        if saved.count > keepingMostRecent {
+            saved.removeFirst(saved.count - keepingMostRecent)
+        }
+        return URL(string: "memory://\(saved.count)")
+    }
+
+    public func allItems() -> [URL] { saved.indices.map { URL(string: "memory://\($0)")! } }
+
+    /// Newest first, matching `FileEvidenceStore`. The double previously
+    /// returned oldest-first, so no test could catch an ordering regression in
+    /// the shipped path.
+    public func recentJPEGs(limit: Int) -> [Data] {
+        saved.reversed().prefix(limit).map(\.jpeg)
+    }
+}
+#endif

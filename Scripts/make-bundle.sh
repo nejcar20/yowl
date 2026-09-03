@@ -12,6 +12,14 @@ rm -rf "${APP_DIR}"
 mkdir -p "${APP_DIR}/Contents/MacOS" "${APP_DIR}/Contents/Resources"
 cp "${BUILD_DIR}/${APP_NAME}" "${APP_DIR}/Contents/MacOS/${APP_NAME}"
 
+# The icon is generated from Scripts/make-icon.swift so it lives in the repo as
+# code rather than as a binary nobody can edit.
+ICONSET="$(mktemp -d)/AppIcon.iconset"
+swiftc -O Scripts/make-icon.swift -o "$(dirname "${ICONSET}")/make-icon" 2>/dev/null
+"$(dirname "${ICONSET}")/make-icon" "${ICONSET}" >/dev/null
+iconutil -c icns "${ICONSET}" -o "${APP_DIR}/Contents/Resources/AppIcon.icns"
+rm -rf "$(dirname "${ICONSET}")"
+
 cat > "${APP_DIR}/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -21,16 +29,19 @@ cat > "${APP_DIR}/Contents/Info.plist" <<PLIST
     <key>CFBundleExecutable</key><string>${APP_NAME}</string>
     <key>CFBundleIdentifier</key><string>${BUNDLE_ID}</string>
     <key>CFBundlePackageType</key><string>APPL</string>
-    <key>CFBundleShortVersionString</key><string>0.1.0</string>
+    <key>CFBundleShortVersionString</key><string>${LAPTOPALARM_VERSION:-0.1.0}</string>
     <key>CFBundleVersion</key><string>1</string>
     <key>LSMinimumSystemVersion</key><string>14.0</string>
     <!-- Menu bar only: no Dock icon, no main window. -->
     <key>LSUIElement</key><true/>
+    <key>CFBundleIconFile</key><string>AppIcon</string>
+    <key>NSHumanReadableCopyright</key><string>Copyright © 2026 Jernej Jan Kocica. All rights reserved.</string>
+    <key>LSApplicationCategoryType</key><string>public.app-category.utilities</string>
     <!-- Without this key macOS terminates the process the moment it touches the
          camera, rather than prompting. The wording is shown verbatim in the
          permission dialog and is the whole of the user's decision. -->
     <key>NSCameraUsageDescription</key>
-    <string>LaptopAlarm watches for the laptop being picked up. Video never leaves your Mac and is never recorded.</string>
+    <string>LaptopAlarm watches for the laptop being picked up, and — if you switch it on — photographs whoever is in front of it when the alarm fires. Everything stays on this Mac unless you set up somewhere to send it.</string>
 </dict>
 </plist>
 PLIST
@@ -51,6 +62,7 @@ cat > "${ENTITLEMENTS}" <<'ENT'
 <plist version="1.0">
 <dict>
     <key>com.apple.security.device.camera</key><true/>
+    <key>com.apple.security.network.client</key><true/>
 </dict>
 </plist>
 ENT
