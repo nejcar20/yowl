@@ -33,9 +33,13 @@ public final class NtfyTransport: AlertTransport {
     /// 128 bits, hex encoded, with no identifying prefix. A name like
     /// "laptopalarm-…" would tell anyone who saw the topic which app it belongs
     /// to and what the photographs in it are of, for no benefit.
-    public static func generateTopic() -> String {
+    public static func generateTopic() -> String? {
         var bytes = [UInt8](repeating: 0, count: 16)
-        _ = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
+        // Discarding this status left `bytes` zeroed on failure, producing the
+        // topic "000…0" -- guessable by anyone, publishing the user's
+        // photographs to the world.
+        guard SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes) == errSecSuccess
+        else { return nil }
         return bytes.map { String(format: "%02x", $0) }.joined()
     }
 
@@ -101,19 +105,26 @@ public final class KeychainTopicStore {
 
     /// Returns the existing topic, or creates one. Stable across launches so the
     /// phone stays subscribed.
-    @discardableResult
-    public func topicCreatingIfNeeded() -> String {
+    /// Returns nil rather than a topic it could not store. Returning one
+    /// anyway meant alerts were sent to a topic the next launch would not
+    /// remember, so the phone stayed subscribed to a dead link while the UI
+    /// showed everything working.
+    public func topicCreatingIfNeeded() -> String? {
         if let existing = topic { return existing }
-        let generated = NtfyTransport.generateTopic()
+        guard let generated = NtfyTransport.generateTopic() else { return nil }
         var query = baseQuery
         query[kSecValueData as String] = Data(generated.utf8)
         query[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
-        SecItemDelete(baseQuery as CFDictionary)
-        SecItemAdd(query as CFDictionary, nil)
+        let deleteStatus = SecItemDelete(baseQuery as CFDictionary)
+        guard deleteStatus == errSecSuccess || deleteStatus == errSecItemNotFound
+        else { return nil }
+        guard SecItemAdd(query as CFDictionary, nil) == errSecSuccess else { return nil }
         return generated
     }
 
-    public func reset() {
-        SecItemDelete(baseQuery as CFDictionary)
+    @discardableResult
+    public func reset() -> Bool {
+        let status = SecItemDelete(baseQuery as CFDictionary)
+        return status == errSecSuccess || status == errSecItemNotFound
     }
 }

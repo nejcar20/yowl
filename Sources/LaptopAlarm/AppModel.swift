@@ -155,6 +155,7 @@ final class AppModel: ObservableObject {
         alert.isEnabled = alert.isAvailable
             && preferences.isEnabled(alert.identifier, default: false)
         alertEnabled = alert.isActive
+        alert.includesPhotographs = snapshot.isActive
         alertTopic = topicStore.topic ?? ""
         motionEnabled = motion.isActive
         powerEnabled = trigger.isActive
@@ -258,6 +259,7 @@ final class AppModel: ObservableObject {
             preferences.setEnabled(false, for: snapshotResponse.identifier)
             snapshotEnabled = false
             camera.setRetainsStills(false)
+            alertResponse.includesPhotographs = false
             return
         }
         // Same permission the motion trigger needs, asked for at the same point:
@@ -270,6 +272,9 @@ final class AppModel: ObservableObject {
             self.preferences.setEnabled(applied, for: self.snapshotResponse.identifier)
             self.snapshotEnabled = self.snapshotResponse.isActive
             self.camera.setRetainsStills(applied)
+            // The policy promises photographs are attached only when
+            // photographs are on. Keeping this in step is what makes that true.
+            self.alertResponse.includesPhotographs = applied
             self.settingsMessage = applied ? nil
                 : "LaptopAlarm needs camera access to photograph a thief. Grant it in System Settings ▸ Privacy & Security ▸ Camera."
         }
@@ -293,11 +298,15 @@ final class AppModel: ObservableObject {
         }
         // Creating the topic on first enable, not at launch, so a user who never
         // turns this on never has one.
-        let topic = topicStore.topicCreatingIfNeeded()
+        guard let topic = topicStore.topicCreatingIfNeeded() else {
+            alertEnabled = false
+            settingsMessage = "Could not create a private alert link. Try again, or check that the Keychain is unlocked."
+            return
+        }
         alertTopic = topic
         rebuildAlertTransport()
-        alertResponse.isEnabled = alertResponse.isAvailable
-        preferences.setEnabled(alertResponse.isEnabled, for: alertResponse.identifier)
+        alertResponse.isEnabled = true
+        preferences.setEnabled(true, for: alertResponse.identifier)
         alertEnabled = alertResponse.isActive
     }
 
@@ -306,15 +315,28 @@ final class AppModel: ObservableObject {
     func regenerateAlertTopic() {
         guard !settingsLocked else { return }
         topicStore.reset()
-        alertTopic = topicStore.topicCreatingIfNeeded()
+        guard let topic = topicStore.topicCreatingIfNeeded() else {
+            settingsMessage = "Could not create a new link. The old one is no longer in use, so alerts are off until this succeeds."
+            alertResponse.isEnabled = false
+            alertEnabled = false
+            alertTopic = ""
+            return
+        }
+        alertTopic = topic
         rebuildAlertTransport()
         settingsMessage = "New link created. Re-subscribe on your phone; the old link no longer receives alerts from this Mac."
     }
 
     func copyAlertLink() {
         guard !alertSubscribeURL.isEmpty else { return }
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(alertSubscribeURL, forType: .string)
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        // Marked concealed so clipboard managers do not file this away in a
+        // searchable history and Universal Clipboard does not sync it to every
+        // other device. It is the credential the policy tells users to treat
+        // like a password.
+        pasteboard.setData(Data(), forType: .init("org.nspasteboard.ConcealedType"))
+        pasteboard.setString(alertSubscribeURL, forType: .string)
         settingsMessage = "Link copied. Open it on your phone, or subscribe to it in the ntfy app."
     }
 

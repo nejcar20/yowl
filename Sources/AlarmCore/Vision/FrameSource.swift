@@ -120,6 +120,9 @@ public final class CameraFrameSource: NSObject, FrameSourcing, StillCapturing,
     }
 
     public func start(onFrame: @escaping (GrayscaleFrame) -> Void) throws {
+        // Read before `stop()` clears anything, and before the session is
+        // configured: the preset depends on it.
+        let wantsStills = captureState.withLock { $0.retainStills }
         stop()
         guard let device = AVCaptureDevice.default(for: .video) else {
             throw FrameSourceError.cameraUnavailable
@@ -128,13 +131,22 @@ public final class CameraFrameSource: NSObject, FrameSourcing, StillCapturing,
             throw FrameSourceError.accessDenied
         }
         self.onFrame = onFrame
-        captureState.withLock { $0 = CaptureState(lastDelivery: .distantPast, isRunning: true) }
+        // Reset only the per-session fields. Assigning a fresh CaptureState
+        // here silently wiped `retainStills` through the memberwise init's
+        // defaults, so evidence capture was switched off on every start and no
+        // photograph was ever taken.
+        captureState.withLock {
+            $0.lastDelivery = .distantPast
+            $0.isRunning = true
+            $0.buffer.removeAll()
+            $0.latestStill = nil
+        }
 
         session.beginConfiguration()
         // Motion downscales to 320x240 by sampling, so a higher preset costs it
         // almost nothing — but a `.low` frame is useless as evidence of who took
         // the machine. Only pay for the bandwidth when stills are wanted.
-        session.sessionPreset = captureState.withLock { $0.retainStills } ? .high : .low
+        session.sessionPreset = wantsStills ? .high : .low
         if let input = try? AVCaptureDeviceInput(device: device), session.canAddInput(input) {
             session.addInput(input)
         } else {
@@ -192,6 +204,10 @@ public final class CameraFrameSource: NSObject, FrameSourcing, StillCapturing,
         if captureState.withLock({ $0.retainStills }),
            let jpeg = Self.jpeg(from: sampleBuffer) {
             captureState.withLock { state in
+                // Re-check: encoding takes milliseconds, and a toggle-off during
+                // it would otherwise leave a full-resolution photograph of the
+                // user resident after they asked for it to stop.
+                guard state.retainStills else { return }
                 state.latestStill = jpeg
                 guard now.timeIntervalSince(state.lastBuffered) >= Self.bufferInterval
                 else { return }
@@ -211,11 +227,15 @@ public final class CameraFrameSource: NSObject, FrameSourcing, StillCapturing,
     }
 
     /// Encodes the full-resolution frame as JPEG for evidence.
+    /// Shared: allocating a CIContext per frame measured ~2x the encode cost,
+    /// for work that runs continuously for hours while armed.
+    nonisolated static let sharedCIContext = CIContext(options: nil)
+
     nonisolated static func jpeg(from sampleBuffer: CMSampleBuffer,
                                  quality: Double = 0.8) -> Data? {
         guard let buffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return nil }
         let image = CIImage(cvPixelBuffer: buffer)
-        let context = CIContext(options: nil)
+        let context = sharedCIContext
         guard let colorSpace = image.colorSpace ?? CGColorSpace(name: CGColorSpace.sRGB)
         else { return nil }
         return context.jpegRepresentation(of: image, colorSpace: colorSpace,

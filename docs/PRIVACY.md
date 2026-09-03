@@ -26,7 +26,9 @@ When it is on, and the alarm fires, LaptopAlarm sends to **ntfy.sh**
 (operated by Philipp Heckel, [ntfy.sh](https://ntfy.sh)):
 
 - A short message saying which trigger fired and when.
-- Up to three of the most recent alarm photographs, if photographs are on.
+- Up to three of the most recent alarm photographs — only if you have also
+  switched on "Photograph whoever is there". With photographs off, alerts carry
+  the message and nothing else.
 
 **How your alerts are kept private.** Your alerts go to a private topic whose
 name is 128 bits of randomness generated on your Mac. That name is the access

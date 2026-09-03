@@ -77,3 +77,47 @@ private func item(_ second: Int) -> EvidenceItem {
     defer { try? FileManager.default.removeItem(at: directory) }
     #expect(FileEvidenceStore(directory: directory).allItems().isEmpty)
 }
+
+// The run-up's last frame and the first live shot can fall in the same second.
+// At one-second filename resolution one silently overwrote the other, losing a
+// photograph on roughly half of all firings.
+@Test func shotsWithinTheSameSecondGetSeparateFiles() throws {
+    let directory = temporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let store = FileEvidenceStore(directory: directory, keepingMostRecent: 40)
+    let base = Date(timeIntervalSince1970: 1_000_000)
+
+    store.save(EvidenceItem(jpeg: Data([1]), capturedAt: base, trigger: "motion"))
+    store.save(EvidenceItem(jpeg: Data([2]),
+                            capturedAt: base.addingTimeInterval(0.2), trigger: "motion"))
+    store.save(EvidenceItem(jpeg: Data([3]),
+                            capturedAt: base.addingTimeInterval(0.8), trigger: "motion"))
+
+    #expect(store.allItems().count == 3, "sub-second shots must not collide")
+}
+
+// An alert attaches the newest photographs. The in-memory double used to return
+// oldest-first, so this ordering was unverifiable in the shipped path.
+@Test func recentJPEGsReturnsNewestFirst() throws {
+    let directory = temporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let store = FileEvidenceStore(directory: directory, keepingMostRecent: 40)
+    let base = Date(timeIntervalSince1970: 1_000_000)
+
+    store.save(EvidenceItem(jpeg: Data([1]), capturedAt: base, trigger: "m"))
+    store.save(EvidenceItem(jpeg: Data([2]),
+                            capturedAt: base.addingTimeInterval(1), trigger: "m"))
+    store.save(EvidenceItem(jpeg: Data([3]),
+                            capturedAt: base.addingTimeInterval(2), trigger: "m"))
+
+    #expect(store.recentJPEGs(limit: 2) == [Data([3]), Data([2])])
+}
+
+// The doubles must agree with the real store, or a test can pass against a
+// broken shipped path.
+@Test func theInMemoryDoubleMatchesTheRealStoresOrdering() {
+    let double = InMemoryEvidenceStore(keepingMostRecent: 40)
+    double.save(EvidenceItem(jpeg: Data([1]), capturedAt: Date(timeIntervalSince1970: 1), trigger: "m"))
+    double.save(EvidenceItem(jpeg: Data([2]), capturedAt: Date(timeIntervalSince1970: 2), trigger: "m"))
+    #expect(double.recentJPEGs(limit: 1) == [Data([2])], "newest first, like the real store")
+}

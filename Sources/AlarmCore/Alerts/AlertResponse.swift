@@ -19,8 +19,20 @@ public final class AlertResponse: Response {
         self.evidence = evidence
     }
 
-    /// Nowhere to send is not protection, and must not be counted as any.
-    public var isAvailable: Bool { transport.isConfigured }
+    /// Fixed at construction, as `Capability` requires. Sending is possible on
+    /// every Mac, so this is always true; whether a destination has been set up
+    /// is a user-configuration state and lives in `isEnabled`, which the engine
+    /// re-reads on every fire. Making this dynamic meant the engine filtered the
+    /// response out permanently at launch, so alerts enabled afterwards never
+    /// fired for a real alarm -- while the test button, which bypasses the
+    /// engine, cheerfully reported success.
+    public let isAvailable = true
+
+    /// Whether the alarm should attach photographs. Mirrors the user's
+    /// photographs setting: without this, turning photographs off still sent
+    /// previously captured ones, which the privacy policy explicitly promises
+    /// does not happen.
+    public var includesPhotographs = false
 
     /// Swaps the destination — a rotated topic, or one day a different provider
     /// entirely, which is why the response holds a protocol and not an ntfy.
@@ -45,16 +57,19 @@ public final class AlertResponse: Response {
     }
 
     public func fire(context: AlarmContext) async {
+        // Nowhere to send is a no-op, not a failure.
+        guard transport.isConfigured else { return }
         inFlight?.cancel()
         // Detached from the alarm: a slow or dead network must never delay the
         // siren, and a transport failure must never propagate into the engine.
+        let attachPhotographs = includesPhotographs
         inFlight = Task { [transport, evidence] in
             let payload = AlertPayload(
                 title: "LaptopAlarm",
                 body: Self.describe(context),
                 urgency: .critical,
                 occurredAt: context.firedAt,
-                images: Self.recentImages(from: evidence))
+                images: attachPhotographs ? Self.recentImages(from: evidence) : [])
             try? await transport.send(payload)
         }
     }

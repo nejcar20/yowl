@@ -42,10 +42,15 @@ public final class FileEvidenceStore: EvidenceStoring {
 
     @discardableResult
     public func save(_ item: EvidenceItem) -> URL? {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withFullDate, .withTime, .withColonSeparatorInTime]
+        // Milliseconds, not seconds. At one-second resolution the run-up's last
+        // frame and the first live shot landed on the same filename, so one
+        // photograph was silently overwritten on roughly half of all firings --
+        // the same defect as before, one level down.
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd'T'HH-mm-ss.SSS"
+        formatter.timeZone = TimeZone(identifier: "UTC")
+        formatter.locale = Locale(identifier: "en_US_POSIX")
         let stamp = formatter.string(from: item.capturedAt)
-            .replacingOccurrences(of: ":", with: "-")
         let url = directory.appendingPathComponent("\(stamp)-\(item.trigger).jpg")
         do {
             try item.jpeg.write(to: url, options: .atomic)
@@ -101,8 +106,11 @@ public final class InMemoryEvidenceStore: EvidenceStoring {
 
     public func allItems() -> [URL] { saved.indices.map { URL(string: "memory://\($0)")! } }
 
+    /// Newest first, matching `FileEvidenceStore`. The double previously
+    /// returned oldest-first, so no test could catch an ordering regression in
+    /// the shipped path.
     public func recentJPEGs(limit: Int) -> [Data] {
-        saved.suffix(limit).map(\.jpeg)
+        saved.reversed().prefix(limit).map(\.jpeg)
     }
 }
 #endif

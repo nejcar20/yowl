@@ -56,12 +56,62 @@ private func payload(images: Int = 1) -> AlertPayload {
 // The topic name IS the access control on ntfy.sh: anyone who guesses it can
 // read the photos. It must be unguessable, and stable so the phone stays
 // subscribed.
-@Test func aGeneratedTopicIsLongAndRandom() {
-    let a = NtfyTransport.generateTopic()
-    let b = NtfyTransport.generateTopic()
+@Test func aGeneratedTopicIsLongAndRandom() throws {
+    let a = try #require(NtfyTransport.generateTopic())
+    let b = try #require(NtfyTransport.generateTopic())
     #expect(a != b)
     #expect(a.count >= 32, "128 bits of randomness, hex encoded")
-    #expect(a.allSatisfy { $0.isHexDigit || $0 == "-" })
+    #expect(a.allSatisfy { $0.isHexDigit })
+    // No identifying prefix: a name like "laptopalarm-…" would tell anyone who
+    // saw the link which app it was and what the photographs were of.
+    #expect(a.lowercased().contains("alarm") == false)
+}
+
+// The response must be filtered IN at construction and gated by isEnabled,
+// which the engine re-reads. Making availability depend on configuration meant
+// the engine dropped it permanently at launch, so alerts enabled afterwards
+// never fired for a real alarm.
+@Test func theAlertResponseIsAlwaysAvailableSoTheEngineKeepsIt() {
+    let unconfigured = AlertResponse(
+        transport: NtfyTransport(topic: "", http: FakeHTTPClient()),
+        evidence: InMemoryEvidenceStore())
+    #expect(unconfigured.isAvailable == true)
+}
+
+@Test func anUnconfiguredTransportSendsNothing() async {
+    let http = FakeHTTPClient()
+    let response = AlertResponse(transport: NtfyTransport(topic: "", http: http),
+                                 evidence: InMemoryEvidenceStore())
+    response.isEnabled = true
+    await response.fire(context: AlarmContext(trigger: TriggerID("power"), firedAt: Date()))
+    try? await Task.sleep(for: .milliseconds(50))
+    #expect(http.requests.isEmpty)
+}
+
+// The privacy policy promises photographs are attached only when photographs
+// are on. Without this the previously captured ones were still sent.
+@Test func photographsAreNotAttachedWhenPhotographsAreOff() async throws {
+    let http = FakeHTTPClient()
+    let evidence = InMemoryEvidenceStore()
+    evidence.save(EvidenceItem(jpeg: Data([1, 2, 3]), capturedAt: Date(), trigger: "motion"))
+    let response = AlertResponse(transport: NtfyTransport(topic: "t", http: http),
+                                 evidence: evidence)
+    response.includesPhotographs = false
+    await response.fire(context: AlarmContext(trigger: TriggerID("power"), firedAt: Date()))
+    try await Task.sleep(for: .milliseconds(80))
+    #expect(http.requests.count == 1, "message only, no attachment")
+}
+
+@Test func photographsAreAttachedWhenPhotographsAreOn() async throws {
+    let http = FakeHTTPClient()
+    let evidence = InMemoryEvidenceStore()
+    evidence.save(EvidenceItem(jpeg: Data([1, 2, 3]), capturedAt: Date(), trigger: "motion"))
+    let response = AlertResponse(transport: NtfyTransport(topic: "t", http: http),
+                                 evidence: evidence)
+    response.includesPhotographs = true
+    await response.fire(context: AlarmContext(trigger: TriggerID("motion"), firedAt: Date()))
+    try await Task.sleep(for: .milliseconds(80))
+    #expect(http.requests.count == 2, "message plus one attachment")
 }
 
 @Test func theTransportIsUnconfiguredWithoutATopic() {
@@ -87,10 +137,4 @@ private func payload(images: Int = 1) -> AlertPayload {
     #expect(response.isEnabled == false)
 }
 
-// Unconfigured means unavailable: an alert response with nowhere to send is not
-// protection and must not count as one.
-@Test func anUnconfiguredTransportMakesTheResponseUnavailable() {
-    let response = AlertResponse(transport: NtfyTransport(topic: "", http: FakeHTTPClient()),
-                                 evidence: InMemoryEvidenceStore())
-    #expect(response.isAvailable == false)
-}
+

@@ -88,6 +88,21 @@ struct SettingsSection: View {
                             get: { model.screenLockEnabled },
                             set: { model.setScreenLockEnabled($0) }))
                     }
+                    if model.snapshotAvailable {
+                        Toggle("Photograph whoever is there", isOn: Binding(
+                            get: { model.snapshotEnabled },
+                            set: { model.setSnapshotEnabled($0) }))
+                        HStack {
+                            Text("Saved on this Mac. The camera light stays on while armed.")
+                                .font(.caption2).foregroundStyle(.secondary)
+                            if model.savedEvidenceCount > 0 {
+                                Button("Show \(model.savedEvidenceCount)") {
+                                    model.revealEvidenceFolder()
+                                }
+                                .font(.caption2)
+                            }
+                        }
+                    }
                 }
 
                 Divider()
