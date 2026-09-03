@@ -41,9 +41,23 @@ closing your own laptop is not theft.
 
 The app asks for your camera and can send photographs to your phone. You are
 being asked to trust a stranger's binary with that. The source is here so you
-do not have to: `grep -rn "URLSession\|NWConnection" Sources/` returns exactly
-one file, and the signed app carries only the camera and network-client
-entitlements — you can verify both in about a minute.
+do not have to — you can check the two claims that matter in about a minute:
+
+```bash
+# All networking. One implementation, and the one line that builds it.
+grep -rn "URLSession\|NWConnection\|CFStream" Sources/
+#   Sources/AlarmCore/Alerts/AlertTransport.swift  — the only HTTP client
+#   Sources/AlarmApp/AppModel.swift                — constructs it, once
+
+# What the shipped app is actually allowed to do.
+codesign -d --entitlements - /Applications/LaptopAlarm.app
+#   com.apple.security.device.camera
+#   com.apple.security.network.client
+```
+
+That client is used in exactly one place: sending an alert to the ntfy link you
+chose, and only when you have switched phone alerts on. There is no other
+network code, no analytics SDK, and no telemetry to find.
 
 ## Privacy
 
