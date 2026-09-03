@@ -25,6 +25,9 @@ final class AppModel: ObservableObject {
     @Published private(set) var motionEnabled = false
     @Published private(set) var liveMotionScore: Double?
     @Published private(set) var isCalibrating = false
+    /// Shown in the main panel, not buried in settings: a configuration that
+    /// cannot protect anything has to be visible before the user walks away.
+    @Published private(set) var protectionWarning: String?
     @Published private(set) var motionSensitivity = MotionSensitivity.sensitivity(
         forThreshold: MotionSensitivity.defaultValue)
 
@@ -36,6 +39,11 @@ final class AppModel: ObservableObject {
     private let motionTrigger: MotionTrigger
     /// One list so a per-trigger setting cannot reach some triggers and not others.
     private var allTriggers: [any Trigger] { [powerTrigger, motionTrigger] }
+
+    /// Recomputed whenever anything that affects coverage changes.
+    private func refreshProtectionWarning() {
+        protectionWarning = ProtectionStatus(triggers: allTriggers).warning
+    }
     private let preferences: PreferenceStoring
     private var countdownTask: Task<Void, Never>?
 
@@ -71,6 +79,7 @@ final class AppModel: ObservableObject {
         engine.onStateChange = { [weak self] newState in
             self?.state = newState
             self?.updateCountdown(for: newState)
+            self?.refreshProtectionWarning()
             // Clear here (not just on the next fire) so a stale "sounding"
             // status cannot survive a disarm.
             guard case .firing = newState else {
@@ -99,6 +108,7 @@ final class AppModel: ObservableObject {
         motionEnabled = motion.isActive
         powerEnabled = trigger.isActive
         motionSensitivity = MotionSensitivity.sensitivity(forThreshold: preferences.motionThreshold)
+        refreshProtectionWarning()
         sirenEnabled = siren.isActive
         screenLockEnabled = lock.isActive
         graceSeconds = preferences.graceSeconds
@@ -197,6 +207,7 @@ final class AppModel: ObservableObject {
         powerTrigger.isEnabled = applied
         preferences.setEnabled(applied, for: powerTrigger.identifier)
         powerEnabled = powerTrigger.isActive
+        refreshProtectionWarning()
     }
 
     func setMotionEnabled(_ enabled: Bool) {
@@ -219,6 +230,8 @@ final class AppModel: ObservableObject {
             self.motionTrigger.isEnabled = applied
             self.preferences.setEnabled(applied, for: self.motionTrigger.identifier)
             self.motionEnabled = self.motionTrigger.isActive
+        self.refreshProtectionWarning()
+            self.refreshProtectionWarning()
             self.settingsMessage = applied ? nil
                 : "LaptopAlarm needs camera access for this. Grant it in System Settings ▸ Privacy & Security ▸ Camera."
         }
