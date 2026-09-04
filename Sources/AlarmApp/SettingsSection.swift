@@ -10,6 +10,13 @@ public struct SettingsSection: View {
     @ObservedObject var model: AppModel
 
     public init(model: AppModel) { self.model = model }
+
+    /// As much as this screen can show. The subtracted chrome is the popover's
+    /// own header, Arm, any warning, Quit, and the menu bar it hangs from.
+    static var settingsMaxHeight: CGFloat {
+        let available = (NSScreen.main?.visibleFrame.height ?? 800) - 300
+        return min(max(available, 320), 780)
+    }
     @State private var expanded = false
     @State private var newPasscode = ""
     /// Pairing genuinely differs by phone, so the user has to say which.
@@ -18,10 +25,13 @@ public struct SettingsSection: View {
     public var body: some View {
         DisclosureGroup("Settings", isExpanded: $expanded) {
             // Fully expanded this content is ~750pt tall, which put the whole
-            // popover at 954pt. That fits a large display and clips a small one
-            // -- and Quit is the last thing in the stack, so it is the first
-            // thing to go. Scrolling here keeps the window a fixed, reachable
-            // size no matter what the settings grow to contain.
+            // popover at 954pt: fine on a large display, clipped on a small one,
+            // and Quit is last in the stack so it goes first. A flat 420pt cap
+            // fixed that and introduced a worse bug -- on a display with room
+            // for everything, half the settings scrolled out of sight behind a
+            // scrollbar macOS only draws while you are scrolling, so they read
+            // as simply gone. Take the screen's actual height instead, and show
+            // the indicator so a scroll that is happening looks like one.
             ScrollView {
             VStack(alignment: .leading, spacing: 10) {
                 if model.settingsLocked {
@@ -231,7 +241,8 @@ public struct SettingsSection: View {
             .padding(.top, 6)
             .disabled(model.settingsLocked)
             }
-            .frame(maxHeight: 420)
+            .frame(maxHeight: Self.settingsMaxHeight)
+            .scrollIndicators(.visible)
         }
         .font(.callout)
         // The popover closing or the group collapsing must release the camera:
