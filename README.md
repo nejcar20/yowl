@@ -124,4 +124,4 @@ MIT — see [LICENSE](LICENSE).
 ## Contact
 
 jernejkocica@gmail.com — bug reports are better filed as
-[issues](https://github.com/OWNER/laptopalarm/issues), but mail works.
+[issues](https://github.com/nejcar20/laptopalarm/issues), but mail works.

@@ -39,7 +39,7 @@ cat > "${APP_DIR}/Contents/Info.plist" <<PLIST
     <!-- Menu bar only: no Dock icon, no main window. -->
     <key>LSUIElement</key><true/>
     <key>CFBundleIconFile</key><string>AppIcon</string>
-    <key>NSHumanReadableCopyright</key><string>Copyright © 2026 Indigo Labs. All rights reserved.</string>
+    <key>NSHumanReadableCopyright</key><string>Copyright © 2026 Jernej Jan Kocica. MIT licensed.</string>
     <key>LSApplicationCategoryType</key><string>public.app-category.utilities</string>
     <!-- Without this key macOS terminates the process the moment it touches the
          camera, rather than prompting. The wording is shown verbatim in the
