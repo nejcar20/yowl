@@ -36,11 +36,30 @@ Everything is merged to `main`. 233 tests, clean build, app built at
 Then `./Scripts/release.sh 1.0.0` does the rest and hands you a notarised DMG.
 It checks both prerequisites first and tells you exactly what is missing.
 
-## What nobody has verified
+## Verified end to end
 
-**The whole chain has never been seen firing together on real hardware.** Each
-part works; the wiring between them is verified by reading and by tests, not by
-a human watching it happen. Before announcing anything:
+The full chain — arm, trigger, siren, screen lock, photographs, push to phone —
+was run on real hardware on 4 September 2026 and worked. See
+[docs/ACCEPTANCE.md](docs/ACCEPTANCE.md) for what that does and does not
+establish.
+
+## What is still unverified
+
+**The clamshell behaviour.** The probe has never been run, so whether the alarm
+survives the lid closing is unknown — do not claim lid-closed protection until
+it is. To check:
+
+```
+/tmp/clamshell-spike        # then unplug, close the lid 30s, reopen
+awk '{print $3}' ~/clamshell-spike.log
+```
+
+Gaps in the ticks mean macOS slept through it.
+
+**A café rather than a desk.** Motion detection is defeated by repetitive
+backgrounds. The sensitivity readout shows this in seconds at any given table.
+
+The original acceptance walk, for reference:
 
 1. Settings → turn **Charger unplugged** back on (it is currently off in your
    stored preferences from when you were trying the toggles)
