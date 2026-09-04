@@ -98,7 +98,7 @@ the script tells you exactly what is missing.
 
 ## Requirements
 
-macOS 14 or later. Apple Silicon for the lid trigger (Intel Macs have no hinge
+macOS 14 or later. Universal binary. Apple Silicon for the lid trigger (Intel Macs have no hinge
 angle sensor).
 
 ## Contributing
@@ -120,3 +120,8 @@ shipped behind tests that passed against broken code, so that bar is deliberate.
 ## License
 
 MIT — see [LICENSE](LICENSE).
+
+## Contact
+
+jernejkocica@gmail.com — bug reports are better filed as
+[issues](https://github.com/OWNER/laptopalarm/issues), but mail works.

@@ -1,0 +1,431 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LaptopAlarm — make taking it loud</title>
+<meta name="description" content="A free, open-source menu-bar alarm for MacBooks. Screams over mute and headphones, locks the screen, photographs whoever is there.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    /* Taken from the app icon: slate housing, amber lamp. The teal is the
+       "quiet" readout — the two signal colours mean something here. */
+    --ground:#0E141A;
+    --panel:#161F28;
+    --edge:#22303C;
+    --amber:#FFB82A;
+    --quiet:#5FCBBB;
+    --ink:#E9EDF0;
+    --muted:#8394A2;
+    --mono:'IBM Plex Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
+    --display:'Archivo',system-ui,-apple-system,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  body{
+    margin:0;background:var(--ground);color:var(--ink);
+    font-family:var(--display);font-size:17px;line-height:1.6;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:1040px;margin:0 auto;padding:0 24px}
+  a{color:inherit}
+
+  /* ---------- top bar ---------- */
+  .bar{
+    display:flex;align-items:center;justify-content:space-between;gap:16px;
+    padding:18px 0;border-bottom:1px solid var(--edge);
+    font-family:var(--mono);font-size:13px;letter-spacing:.02em;
+  }
+  .mark{display:flex;align-items:center;gap:10px;font-weight:600}
+  .mark svg{display:block}
+  .bar nav{display:flex;gap:20px}
+  .bar nav a{color:var(--muted);text-decoration:none}
+  .bar nav a:hover,.bar nav a:focus-visible{color:var(--amber)}
+
+  /* ---------- hero ---------- */
+  .hero{padding:72px 0 8px}
+  .kicker{
+    font-family:var(--mono);font-size:12.5px;letter-spacing:.16em;
+    text-transform:uppercase;color:var(--muted);margin:0 0 22px
+  }
+  h1{
+    font-family:var(--display);font-weight:800;
+    font-size:clamp(2.9rem,9vw,5.6rem);line-height:.94;letter-spacing:-.03em;
+    margin:0 0 26px;max-width:14ch;
+  }
+  h1 .dot{color:var(--amber)}
+  .lede{font-size:clamp(1.05rem,2.2vw,1.28rem);color:#C3CDD5;max-width:56ch;margin:0 0 34px}
+  .lede strong{color:var(--ink);font-weight:600}
+
+  /* ---------- the signature: live score readout ---------- */
+  .scope{
+    border:1px solid var(--edge);border-radius:14px;background:var(--panel);
+    overflow:hidden;margin:44px 0 34px;
+  }
+  .scope-head{
+    display:flex;align-items:baseline;justify-content:space-between;gap:12px;
+    padding:14px 18px;border-bottom:1px solid var(--edge);
+    font-family:var(--mono);font-size:12px;letter-spacing:.14em;
+    text-transform:uppercase;color:var(--muted);flex-wrap:wrap;
+  }
+  .verdict{font-size:13px;letter-spacing:.08em;color:var(--quiet);transition:color .25s}
+  .verdict[data-state="alarm"]{color:var(--amber)}
+  .scope-body{padding:18px 18px 6px}
+  .plot{display:flex;gap:10px;align-items:stretch}
+  .axis{position:relative;flex:none;width:52px;height:170px}
+  .axis span{
+    position:absolute;right:0;transform:translateY(-50%);
+    font-family:var(--mono);font-size:10.5px;color:#5C6C79;letter-spacing:.02em;
+  }
+  .axis span.at-threshold{color:var(--amber);opacity:.8}
+  svg.trace{display:block;flex:1;min-width:0;height:170px}
+  .readout{
+    display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;
+    padding:0 18px 16px;font-family:var(--mono);
+  }
+  .readout .val{font-size:30px;font-weight:600;color:var(--quiet);transition:color .08s linear;font-variant-numeric:tabular-nums}
+  .readout .val[data-state="alarm"]{color:var(--amber)}
+  .readout .cap{font-size:12.5px;color:var(--muted)}
+  .scope-foot{
+    display:flex;gap:10px;flex-wrap:wrap;padding:0 18px 18px;
+  }
+  .sim{
+    font-family:var(--mono);font-size:13px;color:var(--ink);
+    background:#1E2A35;border:1px solid var(--edge);border-radius:8px;
+    padding:9px 14px;cursor:pointer;transition:border-color .15s,background .15s;
+  }
+  .sim:hover,.sim:focus-visible{border-color:var(--amber);background:#243240}
+  .sim[aria-pressed="true"]{border-color:var(--amber);color:var(--amber)}
+  .scope-note{
+    padding:0 18px 18px;font-size:14px;color:var(--muted);max-width:62ch;
+  }
+
+  /* ---------- buttons ---------- */
+  .cta{display:flex;gap:12px;flex-wrap:wrap;margin:0 0 12px}
+  .btn{
+    display:inline-block;text-decoration:none;font-weight:600;font-size:15.5px;
+    padding:13px 22px;border-radius:9px;border:1px solid transparent;transition:.15s;
+  }
+  .btn-primary{background:var(--amber);color:#141A1F}
+  .btn-primary:hover,.btn-primary:focus-visible{background:#FFC855}
+  .btn-ghost{border-color:var(--edge);color:var(--ink)}
+  .btn-ghost:hover,.btn-ghost:focus-visible{border-color:var(--muted)}
+  .req{font-family:var(--mono);font-size:12.5px;color:var(--muted);margin:0 0 76px}
+
+  /* ---------- sections ---------- */
+  section{padding:56px 0;border-top:1px solid var(--edge)}
+  h2{
+    font-family:var(--mono);font-size:12.5px;letter-spacing:.16em;
+    text-transform:uppercase;color:var(--muted);font-weight:500;margin:0 0 28px;
+  }
+  .grid{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}
+  .card{border:1px solid var(--edge);border-radius:12px;padding:20px;background:var(--panel)}
+  .card h3{font-size:1.12rem;font-weight:600;margin:0 0 8px;letter-spacing:-.01em}
+  .card p{margin:0;color:#AFBCC6;font-size:15px}
+  .card .tag{
+    font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;
+    color:var(--muted);display:block;margin-bottom:12px;
+  }
+  ul.plain{list-style:none;padding:0;margin:0;display:grid;gap:14px}
+  ul.plain li{display:flex;gap:14px;align-items:flex-start;font-size:16px;color:#C3CDD5}
+  ul.plain b{color:var(--ink);font-weight:600}
+  .bullet{
+    flex:none;width:7px;height:7px;border-radius:50%;background:var(--amber);margin-top:9px;
+  }
+
+  /* ---------- verify block ---------- */
+  pre{
+    font-family:var(--mono);font-size:13.5px;line-height:1.75;color:#C9D5DE;
+    background:var(--panel);border:1px solid var(--edge);border-radius:12px;
+    padding:20px;overflow-x:auto;margin:0 0 16px;
+  }
+  pre .c{color:var(--muted)}
+  pre .p{color:var(--quiet)}
+
+  /* ---------- honest limitations ---------- */
+  .limits{border-left:2px solid var(--amber);padding-left:22px;display:grid;gap:18px}
+  .limits p{margin:0;color:#C3CDD5;font-size:15.5px;max-width:64ch}
+  .limits b{color:var(--ink)}
+
+  footer{
+    border-top:1px solid var(--edge);padding:32px 0 56px;
+    font-family:var(--mono);font-size:13px;color:var(--muted);
+    display:flex;gap:18px;justify-content:space-between;flex-wrap:wrap;
+  }
+  footer a{color:var(--muted)}
+  footer a:hover{color:var(--amber)}
+
+  @media (prefers-reduced-motion:reduce){
+    *{animation:none!important;transition:none!important}
+  }
+  @media (max-width:640px){
+    .hero{padding:52px 0 4px}
+    .readout .val{font-size:24px}
+    /* The axis was taking a fifth of the plot on a phone. */
+    .axis{width:38px}
+    .axis span{font-size:9.5px}
+    .plot{gap:7px}
+  }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <div class="bar">
+    <span class="mark">
+      <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true">
+        <path d="M10 1.6 17 4.4v6.1c0 4-2.9 6.9-7 7.9-4.1-1-7-3.9-7-7.9V4.4Z" fill="#FFB82A"/>
+        <circle cx="10" cy="9.4" r="1.5" fill="#0E141A"/>
+        <path d="M12.4 6.8a4 4 0 0 1 0 5.2M14.4 5.2a6.6 6.6 0 0 1 0 8.4" stroke="#0E141A" stroke-width="1.4" fill="none" stroke-linecap="round"/>
+      </svg>
+      LaptopAlarm
+    </span>
+    <nav>
+      <a href="https://github.com/OWNER/laptopalarm">Source</a>
+      <a href="https://github.com/OWNER/laptopalarm/releases">Releases</a>
+      <a href="https://github.com/OWNER/laptopalarm/blob/main/docs/PRIVACY.md">Privacy</a>
+    </nav>
+  </div>
+
+  <div class="hero">
+    <p class="kicker">Free · Open source · macOS 14+</p>
+    <h1>Make taking it loud<span class="dot">.</span></h1>
+    <p class="lede">
+      Arm it when you leave your laptop on a café table. Unplug the charger, close
+      the lid, or pick the machine up, and it screams at full volume —
+      <strong>over mute, over headphones</strong> — locks the screen, and
+      photographs whoever is standing there.
+    </p>
+
+    <!-- Signature: the actual problem this thing solves, demonstrated. -->
+    <div class="scope">
+      <div class="scope-head">
+        <span>Motion score — live</span>
+        <span class="verdict" id="verdict" data-state="quiet">quiet</span>
+      </div>
+      <div class="scope-body">
+        <div class="plot">
+          <div class="axis" id="axis" aria-hidden="true"></div>
+          <svg class="trace" id="trace" viewBox="0 0 600 170" preserveAspectRatio="none" role="img"
+               aria-label="A chart of motion score over time against the firing threshold">
+            <g id="grid" stroke="#22303C" stroke-width="1" vector-effect="non-scaling-stroke"></g>
+            <line id="thresh" x1="0" y1="136" x2="600" y2="136" stroke="#FFB82A"
+                  stroke-width="1" stroke-dasharray="3 6" opacity=".5"
+                  vector-effect="non-scaling-stroke"/>
+            <path id="cool" fill="none" stroke="#5FCBBB" stroke-width="2"
+                  stroke-linejoin="round" stroke-linecap="round"
+                  vector-effect="non-scaling-stroke" d=""/>
+            <path id="hot" fill="none" stroke="#FFB82A" stroke-width="2"
+                  stroke-linejoin="round" stroke-linecap="round"
+                  vector-effect="non-scaling-stroke" d=""/>
+          </svg>
+        </div>
+      </div>
+      <div class="readout">
+        <span class="val" id="value" data-state="quiet">0.0009</span>
+        <span class="cap">fires above 0.0050</span>
+      </div>
+      <div class="scope-foot">
+        <button class="sim" id="btn-pass" aria-pressed="true">Someone walks past</button>
+        <button class="sim" id="btn-move" aria-pressed="false">The laptop is moved</button>
+      </div>
+      <p class="scope-note">
+        A café is full of people walking past a still laptop. The detector asks
+        whether one global shift explains the whole frame — if everything moved,
+        the camera moved. Real numbers, measured on a real camera.
+      </p>
+    </div>
+
+    <div class="cta">
+      <a class="btn btn-primary" href="https://github.com/OWNER/laptopalarm/releases/latest">Download for macOS</a>
+      <a class="btn btn-ghost" href="https://github.com/OWNER/laptopalarm">Read the source</a>
+    </div>
+    <p class="req">macOS 14 or later · Universal (Apple Silicon and Intel) · about 2 MB</p>
+  </div>
+
+  <section>
+    <h2>What sets it off</h2>
+    <div class="grid">
+      <div class="card">
+        <span class="tag">On by default</span>
+        <h3>The charger is pulled</h3>
+        <p>The classic grab. Needs the charger connected before you can arm.</p>
+      </div>
+      <div class="card">
+        <span class="tag">Opt in · uses the camera</span>
+        <h3>The laptop is moved</h3>
+        <p>Tells the machine moving apart from people moving in front of it. Tune it at your own table with the live readout.</p>
+      </div>
+      <div class="card">
+        <span class="tag">Opt in · needs the hinge sensor</span>
+        <h3>The lid is closed</h3>
+        <p>Reads the hinge angle directly and fires once the lid has closed 30° — roughly 80° before it shuts, so the siren starts well before the Mac begins sleeping.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>What happens then</h2>
+    <ul class="plain">
+      <li><span class="bullet"></span><span><b>A siren at full volume.</b> It forces the volume to 100% and switches to the built-in speakers, so muting the Mac or plugging in headphones does not help. Your settings are put back when you disarm.</span></li>
+      <li><span class="bullet"></span><span><b>The screen locks,</b> so nobody reads your open session while it screams.</span></li>
+      <li><span class="bullet"></span><span><b>Photographs of whoever is there</b> — including the ten seconds <em>before</em> the alarm, which is usually the better shot, because it catches someone walking up rather than the back of their head.</span></li>
+      <li><span class="bullet"></span><span><b>A push to your phone</b> with those photos, through a private link only you hold.</span></li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Don't take our word for it</h2>
+    <p class="lede" style="margin-bottom:24px">
+      It asks for your camera. You are being asked to trust a stranger's binary
+      with that — so the source is open and the two claims that matter take about
+      a minute to check yourself.
+    </p>
+<pre><span class="c"># Every piece of networking in the app.</span>
+<span class="p">$</span> grep -rn "URLSession\|NWConnection" Sources/
+  Sources/AlarmCore/Alerts/AlertTransport.swift   <span class="c">← the only HTTP client</span>
+  Sources/AlarmApp/AppModel.swift                 <span class="c">← builds it, once</span>
+
+<span class="c"># What the signed app is actually allowed to do.</span>
+<span class="p">$</span> codesign -d --entitlements - /Applications/LaptopAlarm.app
+  com.apple.security.device.camera
+  com.apple.security.network.client</pre>
+    <p style="color:#AFBCC6;font-size:15px;margin:0;max-width:64ch">
+      That client is used in one place: sending an alert to the link you chose,
+      and only if you switched phone alerts on. No accounts, no analytics, no
+      telemetry to find.
+    </p>
+  </section>
+
+  <section>
+    <h2>What it does badly</h2>
+    <div class="limits">
+      <p><b>Repetitive backgrounds beat the motion detection.</b> Window blinds, tiled floors, brick — when the background repeats, it genuinely cannot tell a passer-by from the laptop being moved. Open the sensitivity test at your table and wave a hand: if the number jumps, don't rely on it there.</p>
+      <p><b>⌘Q still stops the alarm.</b> The Quit menu item is disabled while armed, but the keyboard shortcut is not. An app you cannot quit is its own kind of bad, so this is the trade.</p>
+      <p><b>It is a deterrent, not recovery.</b> Turn on Find My and FileVault — those are what protect a stolen Mac. This makes taking it loud and public, which is a different job.</p>
+      <p><b>Tested on one Mac.</b> The download is universal and should run on Intel MacBooks, but nobody has tried it on one — and the lid trigger needs a hinge sensor Intel Macs do not have, so it stays hidden there. If you run it on anything other than recent Apple Silicon, please say how it went.</p>
+    </div>
+  </section>
+
+  <footer>
+    <span>MIT licensed · Indigo Labs · <a href="mailto:jernejkocica@gmail.com">jernejkocica@gmail.com</a></span>
+    <span>
+      <a href="https://github.com/OWNER/laptopalarm">GitHub</a> ·
+      <a href="https://github.com/OWNER/laptopalarm/issues">Report something</a>
+    </span>
+  </footer>
+</div>
+
+<script>
+(function(){
+  var SAMPLES = 60, THRESHOLD = 0.005, LO = 0.0002, HI = 0.08;
+  var cool = document.getElementById('cool');
+  var hot = document.getElementById('hot');
+  var thresh = document.getElementById('thresh');
+  var value = document.getElementById('value');
+  var verdict = document.getElementById('verdict');
+  var btnPass = document.getElementById('btn-pass');
+  var btnMove = document.getElementById('btn-move');
+  var W = 600, TOP = 12, BOT = 153;
+  var L0 = Math.log(LO), SPAN = Math.log(HI) - L0;
+
+  // Log scale: quiet sits near 0.0005 and an alarm near 0.03. On a linear axis
+  // both collapse onto the baseline; the threshold has to be visible between them.
+  function y(score){
+    var clamped = Math.max(LO, Math.min(HI, score));
+    return BOT - ((Math.log(clamped) - L0) / SPAN) * (BOT - TOP);
+  }
+  thresh.setAttribute('y1', y(THRESHOLD));
+  thresh.setAttribute('y2', y(THRESHOLD));
+
+  // Decade gridlines and their labels come off the same y(), so they cannot drift.
+  var grid = document.getElementById('grid'), axis = document.getElementById('axis');
+  [0.001, 0.01].forEach(function(v){
+    var ln = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    ln.setAttribute('x1', 0); ln.setAttribute('x2', W);
+    ln.setAttribute('y1', y(v)); ln.setAttribute('y2', y(v));
+    ln.setAttribute('vector-effect', 'non-scaling-stroke');
+    grid.appendChild(ln);
+  });
+  [[0.001, '0.001', false], [THRESHOLD, '0.005', true], [0.01, '0.01', false]]
+    .forEach(function(row){
+      var el = document.createElement('span');
+      el.textContent = row[1];
+      if (row[2]) el.className = 'at-threshold';
+      el.style.top = y(row[0]) + 'px';
+      axis.appendChild(el);
+    });
+
+  var data = [], mode = 'pass', t = 0;
+  for (var i = 0; i < SAMPLES; i++) data.push(0.0004 + Math.random() * 0.0011);
+
+  // Measured behaviour: a passer-by leaves the score flat near zero, because no
+  // single shift explains a static background. Moving the machine spikes it.
+  function next(){
+    t++;
+    if (mode === 'pass') return 0.0004 + Math.random() * 0.0011;
+    var phase = t % 34;
+    if (phase < 5)  return 0.0006 + Math.random() * 0.001;
+    if (phase < 16) return 0.021 + Math.random() * 0.019;
+    if (phase < 22) return 0.008 + Math.random() * 0.010;
+    return 0.0007 + Math.random() * 0.0012;
+  }
+
+  // Two paths, not one recoloured line: a sample that was quiet stays drawn quiet
+  // once the alarm goes off. The trace is a record, not a mood ring.
+  function render(){
+    var d = { cool: '', hot: '' }, prevHot = null;
+    for (var i = 0; i < SAMPLES; i++) {
+      var isHot = data[i] > THRESHOLD, key = isHot ? 'hot' : 'cool';
+      var pt = ((i / (SAMPLES - 1)) * W).toFixed(1) + ',' + y(data[i]).toFixed(1);
+      if (prevHot === null || isHot !== prevHot) {
+        // Repeat the previous point in the new colour so the segments meet.
+        if (prevHot !== null) {
+          var back = (((i - 1) / (SAMPLES - 1)) * W).toFixed(1) + ',' + y(data[i - 1]).toFixed(1);
+          d[key] += ' M' + back + ' L' + pt;
+        } else {
+          d[key] += ' M' + pt;
+        }
+      } else {
+        d[key] += ' L' + pt;
+      }
+      prevHot = isHot;
+    }
+    cool.setAttribute('d', d.cool.trim());
+    hot.setAttribute('d', d.hot.trim());
+    var latest = data[data.length - 1];
+    var firing = latest > THRESHOLD;
+    value.textContent = latest.toFixed(4);
+    value.dataset.state = firing ? 'alarm' : 'quiet';
+    verdict.dataset.state = firing ? 'alarm' : 'quiet';
+    verdict.textContent = firing ? 'alarm' : 'quiet';
+  }
+
+  function tick(){ data.push(next()); data.shift(); render(); }
+
+  function setMode(m){
+    mode = m; t = 0;
+    btnPass.setAttribute('aria-pressed', String(m === 'pass'));
+    btnMove.setAttribute('aria-pressed', String(m === 'move'));
+  }
+  btnPass.addEventListener('click', function(){ setMode('pass'); });
+  btnMove.addEventListener('click', function(){ setMode('move'); });
+
+  render();
+  var still = window.matchMedia('(prefers-reduced-motion: reduce)');
+  if (!still.matches) {
+    var timer = setInterval(tick, 110);
+    document.addEventListener('visibilitychange', function(){
+      if (document.hidden) { clearInterval(timer); }
+      else { timer = setInterval(tick, 110); }
+    });
+  } else {
+    // Reduced motion: fill a representative trace once, no animation.
+    for (var j = 0; j < SAMPLES; j++) tick();
+  }
+})();
+</script>
+</body>
+</html>

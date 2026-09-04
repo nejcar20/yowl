@@ -7,7 +7,7 @@
 #      (This is NOT the same as "Apple Development", which cannot be notarised.)
 #   2. Notarisation credentials stored in the keychain:
 #        xcrun notarytool store-credentials laptopalarm \
-#          --apple-id you@example.com --team-id U2C2MA4YJZ \
+#          --apple-id you@example.com --team-id <INDIGO-LABS-TEAM-ID> \
 #          --password <app-specific-password-from-appleid.apple.com>
 set -euo pipefail
 
@@ -20,7 +20,7 @@ PROFILE="laptopalarm"
 step() { printf '\n\033[1m==> %s\033[0m\n' "$1"; }
 
 step "Checking prerequisites"
-IDENTITY="$(security find-identity -v -p codesigning | grep "Developer ID Application" | head -1 | sed 's/.*"\(.*\)"/\1/' || true)"
+IDENTITY="${LAPTOPALARM_SIGN_IDENTITY:-$(security find-identity -v -p codesigning | grep "Developer ID Application" | head -1 | sed 's/.*"\(.*\)"/\1/')}"
 if [ -z "${IDENTITY}" ]; then
     cat >&2 <<'MSG'
 error: no "Developer ID Application" certificate found.
@@ -42,7 +42,7 @@ if ! xcrun notarytool history --keychain-profile "${PROFILE}" >/dev/null 2>&1; t
 error: no notarisation credentials stored under profile "${PROFILE}".
 
   xcrun notarytool store-credentials ${PROFILE} \\
-    --apple-id <your-apple-id> --team-id U2C2MA4YJZ \\
+    --apple-id <your-apple-id> --team-id <INDIGO-LABS-TEAM-ID> \\
     --password <app-specific-password>
 
   App-specific passwords come from appleid.apple.com > Sign-In and Security.

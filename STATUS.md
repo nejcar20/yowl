@@ -30,7 +30,7 @@ Everything is merged to `main`. 233 tests, clean build, app built at
    then:
    ```
    xcrun notarytool store-credentials laptopalarm \
-     --apple-id <your-apple-id> --team-id U2C2MA4YJZ --password <password>
+     --apple-id <your-apple-id> --team-id <INDIGO-LABS-TEAM-ID> --password <password>
    ```
 
 Then `./Scripts/release.sh 1.0.0` does the rest and hands you a notarised DMG.

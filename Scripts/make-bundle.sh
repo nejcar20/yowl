@@ -3,10 +3,14 @@ set -euo pipefail
 
 APP_NAME="LaptopAlarm"
 BUNDLE_ID="com.jernejkocica.laptopalarm"
-BUILD_DIR=".build/release"
 APP_DIR="build/${APP_NAME}.app"
 
-swift build -c release --product "${APP_NAME}"
+# Universal, so the download runs on Intel MacBooks as well as Apple Silicon.
+# BUILD_DIR is asked for rather than assumed: passing --arch moves the output
+# out of .build/release and a stale path would silently bundle the old binary.
+ARCHES=(--arch arm64 --arch x86_64)
+swift build -c release --product "${APP_NAME}" "${ARCHES[@]}"
+BUILD_DIR="$(swift build -c release "${ARCHES[@]}" --show-bin-path)"
 
 rm -rf "${APP_DIR}"
 mkdir -p "${APP_DIR}/Contents/MacOS" "${APP_DIR}/Contents/Resources"
@@ -35,7 +39,7 @@ cat > "${APP_DIR}/Contents/Info.plist" <<PLIST
     <!-- Menu bar only: no Dock icon, no main window. -->
     <key>LSUIElement</key><true/>
     <key>CFBundleIconFile</key><string>AppIcon</string>
-    <key>NSHumanReadableCopyright</key><string>Copyright © 2026 Jernej Jan Kocica. All rights reserved.</string>
+    <key>NSHumanReadableCopyright</key><string>Copyright © 2026 Indigo Labs. All rights reserved.</string>
     <key>LSApplicationCategoryType</key><string>public.app-category.utilities</string>
     <!-- Without this key macOS terminates the process the moment it touches the
          camera, rather than prompting. The wording is shown verbatim in the
@@ -68,7 +72,10 @@ cat > "${ENTITLEMENTS}" <<'ENT'
 ENT
 trap 'rm -f "${ENTITLEMENTS}"' EXIT
 
-IDENTITY="${LAPTOPALARM_SIGN_IDENTITY:-Apple Development: Jernej Jan Kocica (U2C2MA4YJZ)}"
+# Local development signs with whatever Apple Development identity is present.
+# Releases override this with the Indigo Labs Developer ID via release.sh.
+IDENTITY="${LAPTOPALARM_SIGN_IDENTITY:-$(security find-identity -v -p codesigning \
+    | grep "Apple Development" | head -1 | sed 's/.*"\(.*\)"/\1/')}"
 # Captured to a variable first: `grep -q` exits on its first match and can
 # SIGPIPE the producer, which under `set -o pipefail` fails the pipeline and
 # silently takes the ad-hoc branch even when the identity exists.
