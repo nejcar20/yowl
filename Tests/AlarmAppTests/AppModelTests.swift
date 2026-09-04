@@ -12,6 +12,7 @@ private func makeModel(
     topicStore: InMemoryTopicStore = InMemoryTopicStore(),
     camera: FakeCamera = FakeCamera(),
     pasteboard: FakePasteboard = FakePasteboard(),
+    onACPower: Bool = true,
     passcode: String? = "1234"
 ) -> (AppModel, InMemoryPreferences, InMemoryTopicStore, FakeCamera) {
     let passcodes = InMemoryPasscodeStore()
@@ -22,7 +23,7 @@ private func makeModel(
         topicStore: topicStore,
         camera: camera,
         lidSensor: FakeLidAngleSensor(angle: 110),
-        powerMonitor: FakePowerSourceMonitor(isOnACPower: true),
+        powerMonitor: FakePowerSourceMonitor(isOnACPower: onACPower),
         audio: FakeAudioOutputControl(state: AudioOutputState(deviceID: 1, volume: 0.3, muted: false)),
         siren: FakeSirenPlayer(),
         screenLocker: FakeScreenLocker(isAvailable: true),
@@ -245,4 +246,32 @@ func theCodeIsOpaqueAndHasAQuietZone() throws {
     // Still blank several modules in, which is what a scanner needs to lock on.
     let inset = try #require(canvas.colorAt(x: 8, y: 8))
     #expect(inset.brightnessComponent > 0.9)
+}
+
+// MARK: - Advice you can act on
+
+/// The protection warning ends with "switch on another trigger in Settings",
+/// but the settings section is hidden until a passcode exists -- so on a fresh
+/// install the app told the user to do something the window did not offer. The
+/// passcode is the only thing to do at that point, and it should be the only
+/// thing asked for.
+@Test @MainActor
+func noProtectionWarningIsShownWhileAPasscodeIsStillNeeded() {
+    let (model, _, _, _) = makeModel(onACPower: false, passcode: nil)
+
+    #expect(model.needsPasscodeSetup)
+    #expect(model.protectionWarning == nil)
+}
+
+/// And once the passcode is set, the warning comes back -- otherwise a user who
+/// finishes setup on battery is left with nothing watching and no notice.
+@Test @MainActor
+func theProtectionWarningReturnsOnceThePasscodeIsSet() {
+    let (model, _, _, _) = makeModel(onACPower: false, passcode: nil)
+    #expect(model.protectionWarning == nil)
+
+    model.setPasscode("4321")
+
+    #expect(!model.needsPasscodeSetup)
+    #expect(model.protectionWarning != nil)
 }

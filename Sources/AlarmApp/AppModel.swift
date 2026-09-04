@@ -164,7 +164,11 @@ public final class AppModel: ObservableObject {
     /// Recomputed whenever anything that affects coverage changes.
     private func refreshProtectionWarning() {
         let status = ProtectionStatus(triggers: allTriggers)
-        protectionWarning = status.warning
+        // Every one of these warnings ends by sending the user to Settings, and
+        // Settings is hidden until a passcode exists. Shown during setup it is
+        // an instruction the window does not offer, competing with the one
+        // thing that can actually be done.
+        protectionWarning = needsPasscodeSetup ? nil : status.warning
         nothingEnabled = status == .nothingEnabled
     }
     private let preferences: PreferenceStoring
@@ -685,6 +689,7 @@ public final class AppModel: ObservableObject {
         do {
             try passcodes.setPasscode(passcode)
             needsPasscodeSetup = false
+            refreshProtectionWarning()
             errorMessage = nil
         } catch PasscodeError.empty {
             errorMessage = "Enter a passcode before saving."
@@ -734,6 +739,7 @@ public final class AppModel: ObservableObject {
             warningMessage = warnings.isEmpty ? nil : "Armed, but: " + warnings.joined(separator: " ")
         } catch AlarmEngineError.noPasscodeSet {
             needsPasscodeSetup = true
+            refreshProtectionWarning()
             errorMessage = "Set a passcode before arming."
             warningMessage = nil
         } catch AlarmEngineError.noArmableTrigger {
