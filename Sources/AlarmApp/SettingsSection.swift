@@ -15,6 +15,12 @@ public struct SettingsSection: View {
 
     public var body: some View {
         DisclosureGroup("Settings", isExpanded: $expanded) {
+            // Fully expanded this content is ~750pt tall, which put the whole
+            // popover at 954pt. That fits a large display and clips a small one
+            // -- and Quit is the last thing in the stack, so it is the first
+            // thing to go. Scrolling here keeps the window a fixed, reachable
+            // size no matter what the settings grow to contain.
+            ScrollView {
             VStack(alignment: .leading, spacing: 10) {
                 if model.settingsLocked {
                     Text("Disarm to change settings.")
@@ -162,10 +168,16 @@ public struct SettingsSection: View {
                                     .frame(width: 84, height: 84)
                                     .accessibilityLabel("Code that pairs your phone with this Mac")
                                 VStack(alignment: .leading, spacing: 4) {
-                                    Text("Scan this with your phone's camera.")
+                                    // Honest about what scanning does. ntfy's own
+                                    // docs say app deep links are Android-only, so
+                                    // a scan cannot be promised to open the app --
+                                    // it opens the topic's page, which works on any
+                                    // phone but is a browser, not push.
+                                    Text("Scan to open your alerts in a browser.")
                                         .font(.caption2)
-                                    Text("Or in the ntfy app tap +, leave the server as ntfy.sh, and use this topic:")
+                                    Text("For push notifications, install the ntfy app, tap +, leave the server as ntfy.sh, and enter this topic:")
                                         .font(.caption2).foregroundStyle(.secondary)
+                                        .fixedSize(horizontal: false, vertical: true)
                                         .fixedSize(horizontal: false, vertical: true)
                                     Text(model.alertTopic)
                                         .font(.system(.caption2, design: .monospaced))
@@ -215,6 +227,8 @@ public struct SettingsSection: View {
             }
             .padding(.top, 6)
             .disabled(model.settingsLocked)
+            }
+            .frame(maxHeight: 420)
         }
         .font(.callout)
         // The popover closing or the group collapsing must release the camera:

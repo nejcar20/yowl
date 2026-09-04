@@ -202,7 +202,8 @@ public final class AppModel: ObservableObject {
         self.lidTrigger = lid
         let clock = dependencies.clock
         let siren = SirenResponse(player: dependencies.siren,
-                                  audio: dependencies.audio)
+                                  audio: dependencies.audio,
+                                  clock: clock)
         self.siren = siren
         // LoginFrameworkScreenLocker never calls dlclose (its function pointer
         // would dangle), so it must be instantiated exactly once per process.

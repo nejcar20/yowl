@@ -292,6 +292,14 @@ public final class FakeAudioOutputControl: AudioOutputControlling {
 
     public func currentState() -> AudioOutputState { state }
 
+    /// Someone reaching over and pressing the mute key while the siren sounds.
+    /// The whole promise of this response is that doing so does not work.
+    public func simulateExternalMute() {
+        state = AudioOutputState(deviceID: state.deviceID, volume: 0,
+                                 muted: true,
+                                 channelVolumes: state.channelVolumes.mapValues { _ in Float(0) })
+    }
+
     public func forceMaxVolumeOnBuiltInSpeakers() throws {
         if shouldFailForce {
             throw AudioOutputError.propertyWriteFailed(selector: "kAudioDevicePropertyVolumeScalar", status: OSStatus(paramErr))

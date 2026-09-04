@@ -10,7 +10,7 @@ private func makeResponse(volume: Float = 0.3, muted: Bool = true)
     let player = FakeSirenPlayer()
     let audio = FakeAudioOutputControl(
         state: AudioOutputState(deviceID: 1, volume: volume, muted: muted))
-    return (SirenResponse(player: player, audio: audio), player, audio)
+    return (SirenResponse(player: player, audio: audio, clock: TestClock()), player, audio)
 }
 
 @Test func firingStartsThePlayerAtFullVolume() async {
@@ -58,7 +58,7 @@ private func makeResponse(volume: Float = 0.3, muted: Bool = true)
     player.shouldFailStart = true
     let audio = FakeAudioOutputControl(
         state: AudioOutputState(deviceID: 1, volume: 0.3, muted: true))
-    let response = SirenResponse(player: player, audio: audio)
+    let response = SirenResponse(player: player, audio: audio, clock: TestClock())
 
     await response.fire(context: ctx)
     #expect(response.isSounding == false)
@@ -84,7 +84,7 @@ private func makeResponse(volume: Float = 0.3, muted: Bool = true)
     let audio = FakeAudioOutputControl(
         state: AudioOutputState(deviceID: 1, volume: 0.3, muted: true))
     audio.shouldFailForce = true
-    let response = SirenResponse(player: player, audio: audio)
+    let response = SirenResponse(player: player, audio: audio, clock: TestClock())
 
     await response.fire(context: ctx)
     // The player did start: we still fire toward noise.
@@ -102,7 +102,7 @@ private func makeResponse(volume: Float = 0.3, muted: Bool = true)
     let audio = FakeAudioOutputControl(
         state: AudioOutputState(deviceID: 1, volume: 0.3, muted: true))
     audio.shouldFailForce = true
-    let response = SirenResponse(player: player, audio: audio)
+    let response = SirenResponse(player: player, audio: audio, clock: TestClock())
 
     await response.fire(context: ctx)
     #expect(response.isSounding == false)
@@ -115,10 +115,68 @@ private func makeResponse(volume: Float = 0.3, muted: Bool = true)
     let original = AudioOutputState(deviceID: 1, volume: 0.3, muted: true)
     let audio = FakeAudioOutputControl(state: original)
     audio.shouldFailForce = true
-    let response = SirenResponse(player: player, audio: audio)
+    let response = SirenResponse(player: player, audio: audio, clock: TestClock())
 
     await response.fire(context: ctx)
     await response.reset()
     #expect(audio.restoredStates == [original])
     #expect(response.isSounding == false)
+}
+
+// MARK: - Holding the volume against someone actively fighting it
+
+/// The siren forced the volume once, at the instant it started. A thief who
+/// pressed the mute key one second later silenced the alarm permanently -- the
+/// app never looked again. "Screams over mute" was only true for people who did
+/// not think to press mute.
+@Test func theSirenTakesTheVolumeBackAfterSomeoneMutesIt() async {
+    let clock = TestClock()
+    let audio = FakeAudioOutputControl(
+        state: AudioOutputState(deviceID: 1, volume: 0.3, muted: false))
+    let response = SirenResponse(player: FakeSirenPlayer(), audio: audio, clock: clock)
+
+    await response.fire(context: ctx)
+    #expect(audio.state.muted == false)
+
+    audio.simulateExternalMute()
+    #expect(audio.state.muted == true)
+
+    clock.advance(by: SirenResponse.volumeHoldInterval)
+
+    #expect(audio.state.muted == false)
+    #expect(audio.state.volume == 1.0)
+}
+
+/// It has to keep doing it, not just once: a thief who mutes twice is not a
+/// harder problem than one who mutes once.
+@Test func theSirenKeepsTakingTheVolumeBack() async {
+    let clock = TestClock()
+    let audio = FakeAudioOutputControl(
+        state: AudioOutputState(deviceID: 1, volume: 0.3, muted: false))
+    let response = SirenResponse(player: FakeSirenPlayer(), audio: audio, clock: clock)
+    await response.fire(context: ctx)
+
+    for _ in 0..<5 {
+        audio.simulateExternalMute()
+        clock.advance(by: SirenResponse.volumeHoldInterval)
+        #expect(audio.state.muted == false)
+    }
+}
+
+/// And it must stop the moment the alarm does. A siren that kept forcing the
+/// volume after disarm would be a worse bug than the one being fixed: the Mac
+/// would be stuck at full volume with nothing to explain it.
+@Test func takingTheVolumeBackStopsWhenTheAlarmStops() async {
+    let clock = TestClock()
+    let audio = FakeAudioOutputControl(
+        state: AudioOutputState(deviceID: 1, volume: 0.3, muted: true))
+    let response = SirenResponse(player: FakeSirenPlayer(), audio: audio, clock: clock)
+    await response.fire(context: ctx)
+    await response.reset()
+
+    let afterReset = audio.forceCount
+    clock.advance(by: SirenResponse.volumeHoldInterval * 10)
+
+    #expect(audio.forceCount == afterReset)
+    #expect(audio.state == AudioOutputState(deviceID: 1, volume: 0.3, muted: true))
 }
