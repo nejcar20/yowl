@@ -48,6 +48,7 @@ public struct AppDependencies {
     public var http: HTTPPosting
     public var clock: AlarmClock
     public var pasteboard: Pasteboarding
+    public var screenUnlocks: ScreenUnlockObserving
 
     public init(passcodes: PasscodeStoring,
                 preferences: PreferenceStoring,
@@ -62,7 +63,8 @@ public struct AppDependencies {
                 evidence: EvidenceStoring,
                 http: HTTPPosting,
                 clock: AlarmClock,
-                pasteboard: Pasteboarding) {
+                pasteboard: Pasteboarding,
+                screenUnlocks: ScreenUnlockObserving) {
         self.passcodes = passcodes
         self.preferences = preferences
         self.topicStore = topicStore
@@ -77,6 +79,7 @@ public struct AppDependencies {
         self.http = http
         self.clock = clock
         self.pasteboard = pasteboard
+        self.screenUnlocks = screenUnlocks
     }
 
     /// The real thing. The only place these concrete types are named.
@@ -95,7 +98,8 @@ public struct AppDependencies {
             evidence: FileEvidenceStore(),
             http: URLSessionHTTPClient(),
             clock: SystemClock(),
-            pasteboard: SystemPasteboard())
+            pasteboard: SystemPasteboard(),
+            screenUnlocks: DistributedScreenUnlockObserver())
     }
 }
 
@@ -106,6 +110,10 @@ public final class AppModel: ObservableObject {
     /// Non-blocking problems: armed, but with a degraded guarantee.
     @Published public private(set) var warningMessage: String?
     @Published public var needsPasscodeSetup: Bool
+    /// Whether a passcode disarm route exists at all. With the screen lock doing
+    /// the authenticating there may be none, and offering an empty passcode
+    /// field then is an instruction that cannot be followed.
+    @Published public private(set) var hasPasscode = false
     /// Whether the siren is actually producing sound, distinct from whether the
     /// alarm is firing: audio-device failures should be visible, not silent.
     @Published public private(set) var isSirenSounding = false
@@ -155,6 +163,7 @@ public final class AppModel: ObservableObject {
     private let topicStore: TopicStoring
     private let http: HTTPPosting
     private let pasteboard: Pasteboarding
+    private let screenUnlocks: ScreenUnlockObserving
     private let lidTrigger: LidAngleTrigger
     /// One list so a per-trigger setting cannot reach some triggers and not others.
     private var allTriggers: [any Trigger] {
@@ -181,6 +190,8 @@ public final class AppModel: ObservableObject {
         self.preferences = preferences
         let passcodes = dependencies.passcodes
         self.passcodes = passcodes
+        // Provisional: the screen lock's state is not known until it is built
+        // below, at which point refreshPasscodeRequirement() settles this.
         self.needsPasscodeSetup = !passcodes.hasPasscode
 
         let trigger = PowerTrigger(monitor: dependencies.powerMonitor,
@@ -218,6 +229,7 @@ public final class AppModel: ObservableObject {
         self.topicStore = topicStore
         self.http = dependencies.http
         self.pasteboard = dependencies.pasteboard
+        self.screenUnlocks = dependencies.screenUnlocks
         let alert = AlertResponse(
             transport: NtfyTransport(topic: topicStore.readTopicValue(),
                                      http: dependencies.http),
@@ -309,6 +321,13 @@ public final class AppModel: ObservableObject {
         refreshProtectionWarning()
         sirenEnabled = siren.isActive
         screenLockEnabled = lock.isActive
+        refreshPasscodeRequirement()
+        // The owner coming back and unlocking is the disarm. Subscribed for the
+        // life of the app rather than only while armed: an unlock that arrives
+        // during the window where we are tearing down would otherwise be missed.
+        screenUnlocks.startObserving { [weak self] in
+            self?.disarmByScreenUnlock()
+        }
         graceSeconds = preferences.graceSeconds
         launchAtLogin = Self.loginItemIsRegistered()
         // Set at init too, not only when the toggle is touched: a relaunch
@@ -389,7 +408,18 @@ public final class AppModel: ObservableObject {
         screenLock.isEnabled = applied
         preferences.setEnabled(applied, for: screenLock.identifier)
         screenLockEnabled = screenLock.isActive
+        // Switching the lock off removes the thing that authenticates a disarm,
+        // so a passcode becomes required at exactly that moment.
+        refreshPasscodeRequirement()
         warnIfNoResponsesLeft()
+    }
+
+    /// A passcode is only needed when unlocking the Mac cannot do the job: no
+    /// screen lock means no unlock event, and then it is the only way to stop a
+    /// siren. Asking for one up front, on every fresh install, bought nothing.
+    private func refreshPasscodeRequirement() {
+        hasPasscode = passcodes.hasPasscode
+        needsPasscodeSetup = !hasPasscode && !screenLock.isActive
     }
 
     public var motionAvailable: Bool { motionTrigger.isAvailable }
@@ -705,7 +735,7 @@ public final class AppModel: ObservableObject {
         guard !settingsLocked else { return }
         do {
             try passcodes.setPasscode(passcode)
-            needsPasscodeSetup = false
+            refreshPasscodeRequirement()
             refreshProtectionWarning()
             errorMessage = nil
         } catch PasscodeError.empty {
@@ -769,6 +799,17 @@ public final class AppModel: ObservableObject {
             errorMessage = "Could not arm."
             warningMessage = nil
         }
+    }
+
+    /// The engine decides whether an unlock counts; this only mirrors the
+    /// cleanup that a passcode disarm does, and stays silent when it does not,
+    /// because an ordinary unlock of a disarmed Mac must not post messages.
+    private func disarmByScreenUnlock() {
+        guard engine.disarmByScreenUnlock() else { return }
+        if snapshotEnabled && !motionEnabled { camera.stop() }
+        passcodeEntry = ""
+        errorMessage = nil
+        warningMessage = nil
     }
 
     public func disarm() {

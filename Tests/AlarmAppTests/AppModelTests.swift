@@ -13,6 +13,7 @@ private func makeModel(
     camera: FakeCamera = FakeCamera(),
     pasteboard: FakePasteboard = FakePasteboard(),
     onACPower: Bool = true,
+    unlocks: FakeScreenUnlockObserver = FakeScreenUnlockObserver(),
     passcode: String? = "1234"
 ) -> (AppModel, InMemoryPreferences, InMemoryTopicStore, FakeCamera) {
     let passcodes = InMemoryPasscodeStore()
@@ -31,7 +32,8 @@ private func makeModel(
         evidence: InMemoryEvidenceStore(),
         http: FakeHTTPClient(),
         clock: TestClock(),
-        pasteboard: pasteboard))
+        pasteboard: pasteboard,
+        screenUnlocks: unlocks))
     return (model, preferences, topicStore, camera)
 }
 
@@ -135,10 +137,28 @@ final class FakeCamera: FrameSourcing, StillCapturing {
     #expect(model.sirenEnabled == before, "a frozen setting must not move")
 }
 
-// Arming with no passcode must refuse rather than pretend.
-@Test @MainActor func armingWithoutAPasscodeRefuses() {
+// Arming with no passcode is fine while the screen lock is doing the
+// authenticating: unlocking the Mac is what disarms, and that is a stronger
+// credential than the four digits this used to insist on up front.
+@Test @MainActor func armingWithoutAPasscodeIsAllowedWhenTheScreenWillLock() {
     let (model, _, _, _) = makeModel(passcode: nil)
+    #expect(model.screenLockEnabled)
+
     model.arm()
+
+    #expect(model.isArmed == true)
+    #expect(model.needsPasscodeSetup == false)
+}
+
+// With the screen lock switched off there is no unlock to authenticate with,
+// so the passcode becomes the only way to stop a siren -- and arming without
+// one must refuse rather than pretend.
+@Test @MainActor func armingWithoutAPasscodeOrAScreenLockRefuses() {
+    let (model, _, _, _) = makeModel(passcode: nil)
+    model.setScreenLockEnabled(false)
+
+    model.arm()
+
     #expect(model.isArmed == false)
     #expect(model.needsPasscodeSetup == true)
 }
@@ -258,6 +278,9 @@ func theCodeIsOpaqueAndHasAQuietZone() throws {
 @Test @MainActor
 func noProtectionWarningIsShownWhileAPasscodeIsStillNeeded() {
     let (model, _, _, _) = makeModel(onACPower: false, passcode: nil)
+    // A passcode is only demanded when the screen lock cannot authenticate the
+    // disarm, so that is the state where the setup panel appears at all.
+    model.setScreenLockEnabled(false)
 
     #expect(model.needsPasscodeSetup)
     #expect(model.protectionWarning == nil)
@@ -268,6 +291,7 @@ func noProtectionWarningIsShownWhileAPasscodeIsStillNeeded() {
 @Test @MainActor
 func theProtectionWarningReturnsOnceThePasscodeIsSet() {
     let (model, _, _, _) = makeModel(onACPower: false, passcode: nil)
+    model.setScreenLockEnabled(false)
     #expect(model.protectionWarning == nil)
 
     model.setPasscode("4321")
@@ -308,4 +332,37 @@ func noTopicMeansNoPairingPayload() {
     #expect(model.alertTopic.isEmpty)
     #expect(model.pairingPayload(for: .android) == "")
     #expect(model.pairingPayload(for: .iPhone) == "")
+}
+
+// MARK: - Unlocking the Mac stops the alarm
+
+/// The end-to-end version of the engine rule: the notification macOS posts when
+/// the screen is unlocked has to actually reach the engine. Wiring the observer
+/// up and never subscribing would leave every one of the engine tests passing
+/// against an app where nothing ever calls them.
+@Test @MainActor
+func unlockingTheMacDisarmsTheRunningAlarm() {
+    let unlocks = FakeScreenUnlockObserver()
+    let (model, _, _, _) = makeModel(unlocks: unlocks, passcode: nil)
+    model.arm()
+    #expect(model.isArmed)
+
+    unlocks.simulateUnlock()
+
+    #expect(model.isArmed == false)
+}
+
+/// And it must not reach past the engine's guard: with the screen lock off,
+/// nothing locked the screen, so an unlock is not an authentication.
+@Test @MainActor
+func unlockingDoesNotDisarmWhenTheScreenLockIsOff() {
+    let unlocks = FakeScreenUnlockObserver()
+    let (model, _, _, _) = makeModel(unlocks: unlocks)
+    model.setScreenLockEnabled(false)
+    model.arm()
+    #expect(model.isArmed)
+
+    unlocks.simulateUnlock()
+
+    #expect(model.isArmed == true)
 }

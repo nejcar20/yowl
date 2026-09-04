@@ -62,8 +62,23 @@ public final class AlarmEngine {
         self.sleepAssertion = sleepAssertion
     }
 
+    /// Unlocking the Mac is what authenticates a disarm when the screen lock is
+    /// doing its job, so this is also the condition under which a passcode
+    /// stops being a precondition for arming.
+    ///
+    /// It has to be re-read rather than captured: the screen lock is a toggle,
+    /// and a value read at construction would let a user switch the lock off
+    /// and keep an alarm that a bare unlock could silence.
+    private var screenLockWillFire: Bool {
+        responses.contains { $0.identifier == "screen-lock" && $0.isActive }
+    }
+
     public func arm() throws {
-        guard passcodes.hasPasscode else { throw AlarmEngineError.noPasscodeSet }
+        // Either authenticator will do. Neither means there is no way to stop a
+        // siren once it starts, which is the one state arming must refuse.
+        guard passcodes.hasPasscode || screenLockWillFire else {
+            throw AlarmEngineError.noPasscodeSet
+        }
         guard state == .disarmed else { return }
 
         // Pre-flight (spec §4's `arming` state): every check that can refuse
@@ -124,6 +139,26 @@ public final class AlarmEngine {
     @discardableResult
     public func disarm(passcode: String) -> Bool {
         guard passcodes.verify(passcode) else { return false }
+        performDisarm()
+        return true
+    }
+
+    /// The owner unlocked the Mac. That is stronger authentication than a
+    /// four-digit passcode and they have already performed it.
+    ///
+    /// Accepted only while the screen lock will fire. Without it an alarm sounds
+    /// on a Mac that was never locked, so an unlock event does not mean anyone
+    /// authenticated -- it could be the ordinary idle-lock unlock of a machine
+    /// sitting in a thief's bag -- and honouring it would hand out the silence
+    /// for free.
+    @discardableResult
+    public func disarmByScreenUnlock() -> Bool {
+        guard screenLockWillFire, state != .disarmed else { return false }
+        performDisarm()
+        return true
+    }
+
+    private func performDisarm() {
         graceWork?.cancel()
         graceWork = nil
         triggers.forEach { $0.stop() }
@@ -132,7 +167,6 @@ public final class AlarmEngine {
         failedTriggers = []
         state = reduce(state, .disarm, now: clock.now)
         Task { for response in responses { await response.reset() } }
-        return true
     }
 
     func handleTrigger(_ id: TriggerID, graceSeconds: TimeInterval) {

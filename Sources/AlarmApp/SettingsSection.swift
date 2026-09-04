@@ -224,10 +224,15 @@ public struct SettingsSection: View {
                 Divider()
 
                 Group {
-                    Text("Change passcode").font(.caption).foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                    // With no passcode set, "Change passcode" describes
+                    // something that does not exist yet.
+                    Text(model.hasPasscode
+                         ? "Change passcode"
+                         : "Set a passcode (optional — unlocking your Mac already disarms)")
+                        .font(.caption).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                     SecureField("New passcode", text: $newPasscode)
-                    Button("Change") {
+                    Button(model.hasPasscode ? "Change" : "Set") {
                         model.changePasscode(to: newPasscode)
                         newPasscode = ""
                     }

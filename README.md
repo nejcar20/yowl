@@ -7,7 +7,7 @@ Free and open source (MIT). No accounts, no analytics, no servers.
 Arm it when you leave your laptop on a café table. If someone unplugs the
 charger, closes the lid, or picks the machine up, it screams at full volume —
 over mute, over headphones — locks the screen, and photographs whoever is
-in front of it. Only your passcode stops it.
+in front of it. Only unlocking your Mac stops it.
 
 ## What it is not
 

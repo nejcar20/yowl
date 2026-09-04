@@ -19,7 +19,7 @@ closes the lid, or picks the machine up, it screams at full volume — it forces
 your volume to 100% and switches to the built-in speakers, so muting it or
 plugging in headphones doesn't help. It also locks the screen, photographs
 whoever is in front of it, and pushes that photo to your phone. Only your
-passcode stops it.
+unlocking your Mac stops it.
 
 **The bit I'm actually pleased with.** Motion detection had one hard problem: in
 a café, people walk past constantly. Naive frame differencing is useless. So it

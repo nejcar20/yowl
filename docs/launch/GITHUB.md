@@ -20,7 +20,7 @@ First public release.
 **Arm it when you leave your laptop somewhere.** Unplug the charger, close the
 lid, or pick the machine up, and it screams at maximum volume — over mute, over
 headphones — locks the screen, photographs whoever is in front of it, and pushes
-that to your phone. Only your passcode stops it.
+that to your phone. Only unlocking your Mac stops it.
 
 ### Triggers
 - **Charger unplugged** — on by default
