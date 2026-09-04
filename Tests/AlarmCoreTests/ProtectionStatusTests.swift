@@ -15,7 +15,7 @@ import Foundation
 
 @Test func anEnabledTriggerThatCannotFireNowIsReported() {
     let power = FakeTrigger(id: TriggerID("power"), canFireNow: false)
-    #expect(ProtectionStatus(triggers: [power]) == .nothingCanFireNow)
+    #expect(ProtectionStatus(triggers: [power]) == .nothingCanFireNow(blocked: [TriggerID("power")]))
 }
 
 @Test func oneUsableTriggerIsProtected() {
@@ -36,5 +36,43 @@ import Foundation
 @Test func protectedIsTheOnlyStatusWithoutAWarning() {
     #expect(ProtectionStatus.protected.warning == nil)
     #expect(ProtectionStatus.nothingEnabled.warning != nil)
-    #expect(ProtectionStatus.nothingCanFireNow.warning != nil)
+    #expect(ProtectionStatus.nothingCanFireNow(blocked: [TriggerID("power")]).warning != nil)
+}
+
+// The shipped message named both the charger and the lid every time, joined by
+// "or", so it was a guess in every case -- and at ~130 characters it was long
+// enough to be clipped before the reader reached the part that mattered. What a
+// blocked user needs is the one thing to do next.
+@Test func aBlockedChargerSaysToPlugItIn() {
+    let warning = ProtectionStatus.nothingCanFireNow(blocked: [TriggerID("power")]).warning
+    #expect(warning == "Plug the charger in to arm, or switch on another trigger in Settings.")
+}
+
+@Test func aBlockedLidSaysToOpenIt() {
+    let warning = ProtectionStatus.nothingCanFireNow(blocked: [TriggerID("lid")]).warning
+    #expect(warning == "Open the lid further to arm, or switch on another trigger in Settings.")
+}
+
+@Test func bothBlockedNamesBoth() {
+    let warning = ProtectionStatus
+        .nothingCanFireNow(blocked: [TriggerID("power"), TriggerID("lid")]).warning
+    #expect(warning == "Plug the charger in and open the lid further to arm, or switch on another trigger in Settings.")
+}
+
+/// A trigger this build does not know how to explain must still produce a
+/// warning. Returning nil here would report the machine as protected.
+@Test func anUnknownBlockedTriggerStillWarns() {
+    let warning = ProtectionStatus.nothingCanFireNow(blocked: [TriggerID("teleport")]).warning
+    #expect(warning != nil)
+    #expect(warning?.isEmpty == false)
+}
+
+/// The blocked set carries only the triggers that are actually switched on and
+/// available. A disabled trigger is not the reason arming is refused, and
+/// naming it would send the user to fix the wrong thing.
+@Test func onlyActiveTriggersAreReportedAsBlocked() {
+    let power = FakeTrigger(id: TriggerID("power"), canFireNow: false)
+    let lid = FakeTrigger(id: TriggerID("lid"), canFireNow: false)
+    lid.isEnabled = false
+    #expect(ProtectionStatus(triggers: [power, lid]) == .nothingCanFireNow(blocked: [TriggerID("power")]))
 }

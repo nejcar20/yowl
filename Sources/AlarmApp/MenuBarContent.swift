@@ -31,18 +31,22 @@ public struct MenuBarContent: View {
                 Text(protection)
                     .font(.caption)
                     .foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             if let startup = model.startupMessage {
                 Text(startup).font(.caption).foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             if let error = model.errorMessage {
                 Text(error).foregroundStyle(.red).font(.caption)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             if let warning = model.warningMessage {
                 Text(warning).foregroundStyle(.orange).font(.caption)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             if !model.needsPasscodeSetup {

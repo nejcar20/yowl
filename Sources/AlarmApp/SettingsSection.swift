@@ -19,10 +19,12 @@ public struct SettingsSection: View {
                 if model.settingsLocked {
                     Text("Disarm to change settings.")
                         .font(.caption).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
 
                 Group {
                     Text("What triggers the alarm").font(.caption).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
                     Toggle("Charger unplugged", isOn: Binding(
                         get: { model.powerEnabled },
                         set: { model.setPowerEnabled($0) }))
@@ -37,6 +39,7 @@ public struct SettingsSection: View {
                             set: { model.setMotionEnabled($0) }))
                         Text("The camera light stays on while armed. Video never leaves your Mac and is never recorded.")
                             .font(.caption2).foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
 
                         if model.motionEnabled {
                             HStack {
@@ -52,6 +55,7 @@ public struct SettingsSection: View {
                             }
                             HStack {
                                 Text("Sensitivity").font(.caption2).foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
                                 Slider(value: Binding(get: { model.motionSensitivity },
                                                       set: { model.setMotionSensitivity($0) }),
                                        in: 0...1)
@@ -61,10 +65,12 @@ public struct SettingsSection: View {
                             }
                             Text("Right for more sensitive. The alarm fires when the number above crosses this one.")
                                 .font(.caption2).foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
 
                             if model.isCalibrating {
                                 Text("Nudge the laptop: the number should jump. Wave a hand in front of it: the number should not. If waving DOES move it, your background is too repetitive for this — blinds, tiles and brick confuse it.")
                                     .font(.caption2).foregroundStyle(.secondary)
+                                    .fixedSize(horizontal: false, vertical: true)
                             }
                         }
                     }
@@ -77,6 +83,7 @@ public struct SettingsSection: View {
 
                 Group {
                     Text("When the alarm fires").font(.caption).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
                     // Only features this build can actually run are offered.
                     // An unavailable feature is absent, not shown-and-disabled,
                     // so a sandboxed build never advertises what it dropped.
@@ -96,6 +103,7 @@ public struct SettingsSection: View {
                             set: { model.setSnapshotEnabled($0) }))
                         Text("Saved on this Mac. The camera light stays on while armed.")
                             .font(.caption2).foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                     // Outside the camera gate on purpose: the privacy policy
                     // promises this route to anyone holding photographs, and a
@@ -114,6 +122,7 @@ public struct SettingsSection: View {
                 Group {
                     HStack {
                         Text("Grace period").font(.caption).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                         Spacer()
                         Text(model.graceSeconds == 0
                              ? "None" : "\(Int(model.graceSeconds))s")
@@ -127,6 +136,7 @@ public struct SettingsSection: View {
                          ? "The siren fires the instant the charger is pulled."
                          : "You get \(Int(model.graceSeconds))s to disarm before the siren starts.")
                         .font(.caption2).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
 
                 Divider()
@@ -138,6 +148,7 @@ public struct SettingsSection: View {
                     if model.alertEnabled {
                         Text("Sent through ntfy.sh, photos included. Install the free ntfy app on your phone, then pair it below.")
                             .font(.caption2).foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
 
                         // Pairing means moving a 32-character secret to a phone.
                         // Scanning is the only route that needs nothing else set
@@ -155,6 +166,7 @@ public struct SettingsSection: View {
                                         .font(.caption2)
                                     Text("Or in the ntfy app tap +, leave the server as ntfy.sh, and use this topic:")
                                         .font(.caption2).foregroundStyle(.secondary)
+                                        .fixedSize(horizontal: false, vertical: true)
                                     Text(model.alertTopic)
                                         .font(.system(.caption2, design: .monospaced))
                                         .textSelection(.enabled)
@@ -172,6 +184,7 @@ public struct SettingsSection: View {
                         .font(.caption2)
                         Text("Keep the topic private — anyone who has it can see your alerts and photos. Photos are deleted from ntfy after a few hours; the copies on this Mac are the ones that last.")
                             .font(.caption2).foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
                         Button("Create a new topic") { model.regenerateAlertTopic() }
                             .font(.caption2)
                     }
@@ -187,6 +200,7 @@ public struct SettingsSection: View {
 
                 Group {
                     Text("Change passcode").font(.caption).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
                     SecureField("New passcode", text: $newPasscode)
                     Button("Change") {
                         model.changePasscode(to: newPasscode)
