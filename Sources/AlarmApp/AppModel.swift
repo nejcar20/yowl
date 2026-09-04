@@ -431,6 +431,22 @@ public final class AppModel: ObservableObject {
         alertTopic.isEmpty ? "" : "https://ntfy.sh/\(alertTopic)"
     }
 
+    /// What a scan should carry, which is not the same on both phones.
+    ///
+    /// ntfy's documentation is explicit that Android deep linking of https
+    /// links "is very brittle and limited", so the app registers its own
+    /// `ntfy://` scheme instead -- and that scheme is Android-only. Encoding one
+    /// URL for both meant an Android user scanned into a browser when their
+    /// phone could have opened the app and subscribed in one step, and an
+    /// iPhone user was promised an app that was never going to open.
+    public func pairingPayload(for target: PairingTarget) -> String {
+        guard !alertTopic.isEmpty else { return "" }
+        switch target {
+        case .android: return "ntfy://ntfy.sh/\(alertTopic)"
+        case .iPhone: return alertSubscribeURL
+        }
+    }
+
     public func setAlertEnabled(_ enabled: Bool) {
         guard !settingsLocked else { return }
         // Whatever the launch message said is no longer what is happening.

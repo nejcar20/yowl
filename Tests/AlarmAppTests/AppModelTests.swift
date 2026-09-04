@@ -275,3 +275,37 @@ func theProtectionWarningReturnsOnceThePasscodeIsSet() {
     #expect(!model.needsPasscodeSetup)
     #expect(model.protectionWarning != nil)
 }
+
+// MARK: - Pairing differs by phone
+
+/// ntfy's docs are explicit that app deep links are Android-only: https links
+/// cannot open the app, so ntfy:// exists for exactly this. On Android that
+/// makes a scan open the app and subscribe in one step.
+@Test @MainActor
+func androidPairingUsesTheDeepLinkThatOpensTheApp() {
+    let (model, _, _, _) = makeModel()
+    model.setAlertEnabled(true)
+
+    #expect(model.pairingPayload(for: .android) == "ntfy://ntfy.sh/\(model.alertTopic)")
+}
+
+/// iOS has no such scheme. The https link at least opens the topic's page, so
+/// the scan does something useful rather than failing on an unknown scheme.
+@Test @MainActor
+func iPhonePairingUsesTheWebLinkBecauseNoSchemeExists() {
+    let (model, _, _, _) = makeModel()
+    model.setAlertEnabled(true)
+
+    #expect(model.pairingPayload(for: .iPhone) == "https://ntfy.sh/\(model.alertTopic)")
+}
+
+/// No topic, no code. Encoding "ntfy://ntfy.sh/" would scan to a subscription
+/// with an empty topic.
+@Test @MainActor
+func noTopicMeansNoPairingPayload() {
+    let (model, _, _, _) = makeModel()
+
+    #expect(model.alertTopic.isEmpty)
+    #expect(model.pairingPayload(for: .android) == "")
+    #expect(model.pairingPayload(for: .iPhone) == "")
+}

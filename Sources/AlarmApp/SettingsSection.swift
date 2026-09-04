@@ -12,6 +12,8 @@ public struct SettingsSection: View {
     public init(model: AppModel) { self.model = model }
     @State private var expanded = false
     @State private var newPasscode = ""
+    /// Pairing genuinely differs by phone, so the user has to say which.
+    @State private var phone: PairingTarget = .iPhone
 
     public var body: some View {
         DisclosureGroup("Settings", isExpanded: $expanded) {
@@ -160,7 +162,15 @@ public struct SettingsSection: View {
                         // Scanning is the only route that needs nothing else set
                         // up; the topic is shown as well so it can be typed or
                         // checked against what the phone ended up subscribed to.
-                        if let code = SubscribeQRCode.image(for: model.alertSubscribeURL) {
+                        Picker("Phone", selection: $phone) {
+                            ForEach(PairingTarget.allCases) { target in
+                                Text(target.label).tag(target)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+                        .labelsHidden()
+
+                        if let code = SubscribeQRCode.image(for: model.pairingPayload(for: phone)) {
                             HStack(alignment: .top, spacing: 10) {
                                 Image(nsImage: code)
                                     .resizable()
@@ -168,14 +178,7 @@ public struct SettingsSection: View {
                                     .frame(width: 84, height: 84)
                                     .accessibilityLabel("Code that pairs your phone with this Mac")
                                 VStack(alignment: .leading, spacing: 4) {
-                                    // Honest about what scanning does. ntfy's own
-                                    // docs say app deep links are Android-only, so
-                                    // a scan cannot be promised to open the app --
-                                    // it opens the topic's page, which works on any
-                                    // phone but is a browser, not push.
-                                    Text("Scan to open your alerts in a browser.")
-                                        .font(.caption2)
-                                    Text("For push notifications, install the ntfy app, tap +, leave the server as ntfy.sh, and enter this topic:")
+                                    Text(phone.scanOutcome)
                                         .font(.caption2).foregroundStyle(.secondary)
                                         .fixedSize(horizontal: false, vertical: true)
                                         .fixedSize(horizontal: false, vertical: true)

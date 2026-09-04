@@ -1,4 +1,4 @@
-# Yowl
+# Yowl — MacBook theft alarm
 
 A menu-bar alarm that makes stealing your MacBook loud.
 
