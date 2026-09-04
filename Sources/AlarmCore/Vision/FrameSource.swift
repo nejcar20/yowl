@@ -39,7 +39,7 @@ public final class CameraFrameSource: NSObject, FrameSourcing, StillCapturing,
 
     private let session = AVCaptureSession()
     private let output = AVCaptureVideoDataOutput()
-    private let queue = DispatchQueue(label: "com.jernejkocica.laptopalarm.frames")
+    private let queue = DispatchQueue(label: "com.jernejkocica.yowl.frames")
 
     /// Everything the capture callback touches. The callback runs on the
     /// capture queue, never the main actor, so it cannot legally read

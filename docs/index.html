@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>LaptopAlarm — make taking it loud</title>
-<meta name="description" content="A free, open-source menu-bar alarm for MacBooks. Screams over mute and headphones, locks the screen, photographs whoever is there.">
+<title>Yowl — make taking it loud</title>
+<meta name="description" content="Yowl is a free, open-source menu-bar alarm for MacBooks. Take the machine and it screams over mute and headphones, locks the screen, and photographs whoever is there.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -180,12 +180,12 @@
         <circle cx="10" cy="9.4" r="1.5" fill="#0E141A"/>
         <path d="M12.4 6.8a4 4 0 0 1 0 5.2M14.4 5.2a6.6 6.6 0 0 1 0 8.4" stroke="#0E141A" stroke-width="1.4" fill="none" stroke-linecap="round"/>
       </svg>
-      LaptopAlarm
+      Yowl
     </span>
     <nav>
-      <a href="https://github.com/nejcar20/laptopalarm">Source</a>
-      <a href="https://github.com/nejcar20/laptopalarm/releases">Releases</a>
-      <a href="https://github.com/nejcar20/laptopalarm/blob/main/docs/PRIVACY.md">Privacy</a>
+      <a href="https://github.com/nejcar20/yowl">Source</a>
+      <a href="https://github.com/nejcar20/yowl/releases">Releases</a>
+      <a href="https://github.com/nejcar20/yowl/blob/main/docs/PRIVACY.md">Privacy</a>
     </nav>
   </div>
 
@@ -239,8 +239,8 @@
     </div>
 
     <div class="cta">
-      <a class="btn btn-primary" href="https://github.com/nejcar20/laptopalarm/releases/latest">Download for macOS</a>
-      <a class="btn btn-ghost" href="https://github.com/nejcar20/laptopalarm">Read the source</a>
+      <a class="btn btn-primary" href="https://github.com/nejcar20/yowl/releases/latest">Download for macOS</a>
+      <a class="btn btn-ghost" href="https://github.com/nejcar20/yowl">Read the source</a>
     </div>
     <p class="req">macOS 14 or later · Universal (Apple Silicon and Intel) · about 2 MB</p>
   </div>
@@ -272,7 +272,7 @@
       <li><span class="bullet"></span><span><b>A siren at full volume.</b> It forces the volume to 100% and switches to the built-in speakers, so muting the Mac or plugging in headphones does not help. Your settings are put back when you disarm.</span></li>
       <li><span class="bullet"></span><span><b>The screen locks,</b> so nobody reads your open session while it screams.</span></li>
       <li><span class="bullet"></span><span><b>Photographs of whoever is there</b> — including the ten seconds <em>before</em> the alarm, which is usually the better shot, because it catches someone walking up rather than the back of their head.</span></li>
-      <li><span class="bullet"></span><span><b>A push to your phone</b> with those photos, through a private link only you hold.</span></li>
+      <li><span class="bullet"></span><span><b>A push to your phone</b> with those photos, over a private ntfy topic only you hold — pair it once by scanning a code.</span></li>
     </ul>
   </section>
 
@@ -289,7 +289,7 @@
   Sources/AlarmApp/AppModel.swift                 <span class="c">← builds it, once</span>
 
 <span class="c"># What the signed app is actually allowed to do.</span>
-<span class="p">$</span> codesign -d --entitlements - /Applications/LaptopAlarm.app
+<span class="p">$</span> codesign -d --entitlements - /Applications/Yowl.app
   com.apple.security.device.camera
   com.apple.security.network.client</pre>
     <p style="color:#AFBCC6;font-size:15px;margin:0;max-width:64ch">
@@ -312,8 +312,8 @@
   <footer>
     <span>MIT licensed · <a href="mailto:jernejkocica@gmail.com">jernejkocica@gmail.com</a></span>
     <span>
-      <a href="https://github.com/nejcar20/laptopalarm">GitHub</a> ·
-      <a href="https://github.com/nejcar20/laptopalarm/issues">Report something</a>
+      <a href="https://github.com/nejcar20/yowl">GitHub</a> ·
+      <a href="https://github.com/nejcar20/yowl/issues">Report something</a>
     </span>
   </footer>
 </div>

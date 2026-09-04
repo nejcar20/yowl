@@ -1,8 +1,8 @@
-# LaptopAlarm — Privacy Policy
+# Yowl — Privacy Policy
 
 _Last updated: 3 September 2026_
 
-**LaptopAlarm collects nothing about you and has no servers.** There is no
+**Yowl collects nothing about you and has no servers.** There is no
 analytics, no crash reporting, no telemetry, and no account.
 
 It sends data to exactly one place, only if you switch it on, and only to a
@@ -14,7 +14,7 @@ destination you control: your own phone.
 |---|---|---|
 | Your disarm passcode | macOS Keychain, this device only | Stored as a salted PBKDF2-SHA256 hash. The passcode itself is never written down and cannot be recovered from what is stored. |
 | Your settings | macOS user defaults | Which triggers and responses are switched on — including whether photographs and phone alerts are enabled — the grace period, and motion sensitivity. |
-| Alarm photographs | `~/Library/Application Support/LaptopAlarm/Evidence` | Only if you switch on photographs. Capped at the 40 most recent; older ones are deleted automatically. |
+| Alarm photographs | `~/Library/Application Support/Yowl/Evidence` | Only if you switch on photographs. Capped at the 40 most recent; older ones are deleted automatically. |
 | Your alert link | macOS Keychain, this device only | Only if you switch on phone alerts. |
 
 ## Phone alerts — the only thing that leaves your Mac
@@ -22,7 +22,7 @@ destination you control: your own phone.
 **Off by default.** Nothing is transmitted unless you switch on "Send an alert
 to my phone".
 
-When it is on, and the alarm fires, LaptopAlarm sends to **ntfy.sh**
+When it is on, and the alarm fires, Yowl sends to **ntfy.sh**
 (operated by Philipp Heckel, [ntfy.sh](https://ntfy.sh)):
 
 - A short message saying which trigger fired and when.
@@ -68,8 +68,8 @@ Everything is under your control:
 
 - **Photographs:** open the folder from Settings and delete them.
 - **Alert link:** create a new one, or switch alerts off, in Settings.
-- **Passcode and link:** Keychain Access, search `com.jernejkocica.laptopalarm`.
-- **Settings:** stored in `~/Library/Preferences/com.jernejkocica.laptopalarm.plist`. macOS does not remove this when an app is deleted; delete that file to clear it.
+- **Passcode and link:** Keychain Access, search `com.jernejkocica.yowl`.
+- **Settings:** stored in `~/Library/Preferences/com.jernejkocica.yowl.plist`. macOS does not remove this when an app is deleted; delete that file to clear it.
 
 Under GDPR you may contact us about any of the above, though in practice we hold
 nothing to act on.

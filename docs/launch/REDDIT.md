@@ -36,7 +36,7 @@ to:
 
 ```
 grep -rn "URLSession\|NWConnection" Sources/
-codesign -d --entitlements - /Applications/LaptopAlarm.app
+codesign -d --entitlements - /Applications/Yowl.app
 ```
 
 **What it does badly**, because you'll find out anyway:

@@ -1,4 +1,4 @@
-# LaptopAlarm
+# Yowl
 
 A menu-bar alarm that makes stealing your MacBook loud.
 
@@ -12,7 +12,7 @@ in front of it. Only your passcode stops it.
 ## What it is not
 
 This is a deterrent, not a recovery system. **Turn on Find My and FileVault** —
-those are what actually recover or protect a stolen Mac. LaptopAlarm makes the
+those are what actually recover or protect a stolen Mac. Yowl makes the
 theft loud and public, which is a different job.
 
 ## Triggers
@@ -50,7 +50,7 @@ grep -rn "URLSession\|NWConnection\|CFStream" Sources/
 #   Sources/AlarmApp/AppModel.swift                — constructs it, once
 
 # What the shipped app is actually allowed to do.
-codesign -d --entitlements - /Applications/LaptopAlarm.app
+codesign -d --entitlements - /Applications/Yowl.app
 #   com.apple.security.device.camera
 #   com.apple.security.network.client
 ```
@@ -62,7 +62,7 @@ network code, no analytics SDK, and no telemetry to find.
 ## Privacy
 
 No accounts, no analytics, no servers of our own. Photographs are written to
-`~/Library/Application Support/LaptopAlarm/Evidence`, capped at the 40 most
+`~/Library/Application Support/Yowl/Evidence`, capped at the 40 most
 recent.
 
 Nothing leaves your Mac unless you switch on **phone alerts**, which send the
@@ -89,7 +89,7 @@ See [PRIVACY.md](docs/PRIVACY.md).
 ```bash
 swift test              # 224 tests
 ./Scripts/make-bundle.sh
-open build/LaptopAlarm.app
+open build/Yowl.app
 ```
 
 Releases: `./Scripts/release.sh 1.0.0` — builds, signs, notarises and packages
@@ -124,4 +124,4 @@ MIT — see [LICENSE](LICENSE).
 ## Contact
 
 jernejkocica@gmail.com — bug reports are better filed as
-[issues](https://github.com/nejcar20/laptopalarm/issues), but mail works.
+[issues](https://github.com/nejcar20/yowl/issues), but mail works.

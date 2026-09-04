@@ -3,7 +3,7 @@ import Foundation
 @testable import AlarmCore
 
 private func payload(images: Int = 1) -> AlertPayload {
-    AlertPayload(title: "LaptopAlarm",
+    AlertPayload(title: "Yowl",
                  body: "Charger unplugged",
                  urgency: .critical,
                  occurredAt: Date(timeIntervalSince1970: 1_000_000),
@@ -19,7 +19,7 @@ private func payload(images: Int = 1) -> AlertPayload {
     try await transport.send(payload(images: 2))
     #expect(http.requests.count == 3, "one message, then one request per image")
     #expect(http.requests[0].url.absoluteString == "https://ntfy.sh/secret-topic")
-    #expect(http.requests[0].headers["Title"] == "LaptopAlarm")
+    #expect(http.requests[0].headers["Title"] == "Yowl")
     #expect(http.requests.dropFirst().allSatisfy { $0.headers["Filename"] != nil })
 }
 
@@ -62,7 +62,7 @@ private func payload(images: Int = 1) -> AlertPayload {
     #expect(a != b)
     #expect(a.count >= 32, "128 bits of randomness, hex encoded")
     #expect(a.allSatisfy { $0.isHexDigit })
-    // No identifying prefix: a name like "laptopalarm-…" would tell anyone who
+    // No identifying prefix: a name like "yowl-…" would tell anyone who
     // saw the link which app it was and what the photographs were of.
     #expect(a.lowercased().contains("alarm") == false)
 }

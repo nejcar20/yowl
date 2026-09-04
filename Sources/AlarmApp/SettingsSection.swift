@@ -136,16 +136,43 @@ public struct SettingsSection: View {
                         get: { model.alertEnabled },
                         set: { model.setAlertEnabled($0) }))
                     if model.alertEnabled {
-                        Text("Sent through ntfy.sh, including any photos. Install the free ntfy app and subscribe to your private link.")
+                        Text("Sent through ntfy.sh, photos included. Install the free ntfy app on your phone, then pair it below.")
                             .font(.caption2).foregroundStyle(.secondary)
+
+                        // Pairing means moving a 32-character secret to a phone.
+                        // Scanning is the only route that needs nothing else set
+                        // up; the topic is shown as well so it can be typed or
+                        // checked against what the phone ended up subscribed to.
+                        if let code = SubscribeQRCode.image(for: model.alertSubscribeURL) {
+                            HStack(alignment: .top, spacing: 10) {
+                                Image(nsImage: code)
+                                    .resizable()
+                                    .interpolation(.none)
+                                    .frame(width: 84, height: 84)
+                                    .accessibilityLabel("Code that pairs your phone with this Mac")
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text("Scan this with your phone's camera.")
+                                        .font(.caption2)
+                                    Text("Or in the ntfy app tap +, leave the server as ntfy.sh, and use this topic:")
+                                        .font(.caption2).foregroundStyle(.secondary)
+                                    Text(model.alertTopic)
+                                        .font(.system(.caption2, design: .monospaced))
+                                        .textSelection(.enabled)
+                                        .lineLimit(2)
+                                        .truncationMode(.middle)
+                                }
+                            }
+                        }
+
                         HStack {
-                            Button("Copy my link") { model.copyAlertLink() }
+                            Button("Copy topic") { model.copyAlertTopic() }
+                            Button("Copy link") { model.copyAlertLink() }
                             Button("Send test") { model.sendTestAlert() }
                         }
                         .font(.caption2)
-                        Text("Keep the link private — anyone who has it can see your alerts and photos. Photos are deleted from ntfy after a few hours; the copies on this Mac are the ones that last.")
+                        Text("Keep the topic private — anyone who has it can see your alerts and photos. Photos are deleted from ntfy after a few hours; the copies on this Mac are the ones that last.")
                             .font(.caption2).foregroundStyle(.secondary)
-                        Button("Create a new link") { model.regenerateAlertTopic() }
+                        Button("Create a new topic") { model.regenerateAlertTopic() }
                             .font(.caption2)
                     }
                 }

@@ -84,7 +84,7 @@ public final class AlarmEngine {
         sleepAssertionFailed = false
         failedTriggers = []
         do {
-            try sleepAssertion?.acquire(reason: "LaptopAlarm armed")
+            try sleepAssertion?.acquire(reason: "Yowl armed")
         } catch {
             sleepAssertionFailed = true
         }

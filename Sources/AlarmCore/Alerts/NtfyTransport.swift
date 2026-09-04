@@ -31,7 +31,7 @@ public final class NtfyTransport: AlertTransport {
     public var isConfigured: Bool { !topic.isEmpty }
 
     /// 128 bits, hex encoded, with no identifying prefix. A name like
-    /// "laptopalarm-…" would tell anyone who saw the topic which app it belongs
+    /// "yowl-…" would tell anyone who saw the topic which app it belongs
     /// to and what the photographs in it are of, for no benefit.
     public static func generateTopic() -> String? {
         var bytes = [UInt8](repeating: 0, count: 16)
@@ -98,7 +98,7 @@ public final class KeychainTopicStore: TopicStoring {
     private let service: String
     private let account = "ntfy-topic"
 
-    public init(service: String = "com.jernejkocica.laptopalarm") {
+    public init(service: String = "com.jernejkocica.yowl") {
         self.service = service
     }
 

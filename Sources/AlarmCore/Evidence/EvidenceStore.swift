@@ -37,7 +37,7 @@ public final class FileEvidenceStore: EvidenceStoring {
         self.keepingMostRecent = max(1, keepingMostRecent)
         self.directory = directory ?? FileManager.default
             .urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("LaptopAlarm/Evidence", isDirectory: true)
+            .appendingPathComponent("Yowl/Evidence", isDirectory: true)
         try? FileManager.default.createDirectory(at: self.directory,
                                                  withIntermediateDirectories: true)
     }

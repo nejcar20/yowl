@@ -1,5 +1,6 @@
 import Testing
 import Foundation
+import AppKit
 @testable import AlarmApp
 @testable import AlarmCore
 
@@ -10,6 +11,7 @@ private func makeModel(
     preferences: InMemoryPreferences = InMemoryPreferences(),
     topicStore: InMemoryTopicStore = InMemoryTopicStore(),
     camera: FakeCamera = FakeCamera(),
+    pasteboard: FakePasteboard = FakePasteboard(),
     passcode: String? = "1234"
 ) -> (AppModel, InMemoryPreferences, InMemoryTopicStore, FakeCamera) {
     let passcodes = InMemoryPasscodeStore()
@@ -27,8 +29,18 @@ private func makeModel(
         sleepAssertion: FakeSleepAssertion(),
         evidence: InMemoryEvidenceStore(),
         http: FakeHTTPClient(),
-        clock: TestClock()))
+        clock: TestClock(),
+        pasteboard: pasteboard))
     return (model, preferences, topicStore, camera)
+}
+
+/// Records what actually reached the clipboard. The whole defect being fixed
+/// here was invisible in code review: the code said "copy", it copied, and only
+/// someone standing at their phone with the ntfy app open could see it had
+/// copied the wrong string.
+final class FakePasteboard: Pasteboarding {
+    private(set) var lastWritten: String?
+    func writeSecret(_ string: String) { lastWritten = string }
 }
 
 /// A camera that is both a frame source and a still source, as the real one is.
@@ -137,4 +149,100 @@ final class FakeCamera: FrameSourcing, StillCapturing {
     model.arm()
     #expect(model.isArmed == false)
     #expect(model.protectionWarning != nil)
+}
+
+
+// MARK: - Pairing a phone
+
+/// The ntfy app's subscribe screen asks for a topic name, not a URL. Copying
+/// "https://ntfy.sh/<topic>" into that field does not work, so the topic has to
+/// be copyable on its own.
+@Test @MainActor
+func copyingTheTopicCopiesTheBareTopicAndNotTheURL() {
+    let pasteboard = FakePasteboard()
+    let (model, _, _, _) = makeModel(pasteboard: pasteboard)
+    model.setAlertEnabled(true)
+    #expect(!model.alertTopic.isEmpty)
+
+    model.copyAlertTopic()
+
+    #expect(pasteboard.lastWritten == model.alertTopic)
+    #expect(pasteboard.lastWritten?.contains("ntfy.sh") == false)
+    #expect(pasteboard.lastWritten?.contains("/") == false)
+}
+
+/// The link is still what you want for a browser, so it stays available.
+@Test @MainActor
+func copyingTheLinkCopiesTheFullSubscribeURL() {
+    let pasteboard = FakePasteboard()
+    let (model, _, _, _) = makeModel(pasteboard: pasteboard)
+    model.setAlertEnabled(true)
+
+    model.copyAlertLink()
+
+    #expect(pasteboard.lastWritten == "https://ntfy.sh/\(model.alertTopic)")
+}
+
+/// With no topic there is nothing to pair, and writing an empty string would
+/// silently wipe whatever the user had on their clipboard.
+@Test @MainActor
+func copyingWithNoTopicWritesNothing() {
+    let pasteboard = FakePasteboard()
+    let (model, _, _, _) = makeModel(pasteboard: pasteboard)
+
+    model.copyAlertTopic()
+    model.copyAlertLink()
+
+    #expect(pasteboard.lastWritten == nil)
+}
+
+// MARK: - Pairing by camera
+
+/// A 32-character hex topic is not something anyone will retype from a screen,
+/// and the clipboard does not reach a phone unless Universal Clipboard is on.
+/// The code is the only pairing route that works with nothing else configured.
+@Test @MainActor
+func aTopicProducesAScannableCode() {
+    let image = SubscribeQRCode.image(for: "https://ntfy.sh/0123456789abcdef")
+    #expect(image != nil)
+    #expect((image?.size.width ?? 0) > 0)
+}
+
+/// A code for an empty string scans to nothing, which is worse than no code:
+/// it looks like pairing is available when it is not.
+@Test @MainActor
+func noTopicProducesNoCode() {
+    #expect(SubscribeQRCode.image(for: "") == nil)
+}
+
+/// CIQRCodeGenerator leaves about one module of margin. The spec asks for four,
+/// and scanners genuinely refuse codes that run to the edge -- which is what this
+/// caught. Compositing over black also pins the background down as opaque, so a
+/// future change to a transparent one cannot quietly make the code invisible in
+/// dark mode.
+@Test @MainActor
+func theCodeIsOpaqueAndHasAQuietZone() throws {
+    let image = try #require(SubscribeQRCode.image(for: "https://ntfy.sh/abc123"))
+    let side = Int(image.size.width)
+
+    let canvas = try #require(NSBitmapImageRep(
+        bitmapDataPlanes: nil, pixelsWide: side, pixelsHigh: side,
+        bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+        colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0))
+
+    NSGraphicsContext.saveGraphicsState()
+    NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: canvas)
+    NSColor.black.setFill()
+    NSRect(x: 0, y: 0, width: side, height: side).fill()
+    image.draw(in: NSRect(x: 0, y: 0, width: side, height: side))
+    NSGraphicsContext.restoreGraphicsState()
+
+    // The corner is quiet zone. Over a black canvas it stays light only if the
+    // generator painted an opaque light background there.
+    let corner = try #require(canvas.colorAt(x: 2, y: 2))
+    #expect(corner.brightnessComponent > 0.9)
+
+    // Still blank several modules in, which is what a scanner needs to lock on.
+    let inset = try #require(canvas.colorAt(x: 8, y: 8))
+    #expect(inset.brightnessComponent > 0.9)
 }

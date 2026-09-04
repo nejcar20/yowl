@@ -3,7 +3,7 @@
 _3 September 2026_
 
 Everything is merged to `main`. 233 tests, clean build, app built at
-`build/LaptopAlarm.app`.
+`build/Yowl.app`.
 
 ## What works
 
@@ -29,7 +29,7 @@ Everything is merged to `main`. 233 tests, clean build, app built at
 2. **Notarisation credentials.** App-specific password from appleid.apple.com,
    then:
    ```
-   xcrun notarytool store-credentials laptopalarm \
+   xcrun notarytool store-credentials yowl \
      --apple-id <your-apple-id> --team-id <INDIGO-LABS-TEAM-ID> --password <password>
    ```
 

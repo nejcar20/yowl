@@ -1,26 +1,26 @@
 #!/bin/bash
-# Builds, signs, notarises and packages LaptopAlarm for direct download.
+# Builds, signs, notarises and packages Yowl for direct download.
 #
 # Needs two things that only a human with the Apple account can create:
 #   1. A "Developer ID Application" certificate
 #        Xcode > Settings > Accounts > Manage Certificates > + > Developer ID Application
 #      (This is NOT the same as "Apple Development", which cannot be notarised.)
 #   2. Notarisation credentials stored in the keychain:
-#        xcrun notarytool store-credentials laptopalarm \
+#        xcrun notarytool store-credentials yowl \
 #          --apple-id you@example.com --team-id <INDIGO-LABS-TEAM-ID> \
 #          --password <app-specific-password-from-appleid.apple.com>
 set -euo pipefail
 
-APP_NAME="LaptopAlarm"
+APP_NAME="Yowl"
 VERSION="${1:-1.0.0}"
 APP_DIR="build/${APP_NAME}.app"
 DMG="build/${APP_NAME}-${VERSION}.dmg"
-PROFILE="laptopalarm"
+PROFILE="yowl"
 
 step() { printf '\n\033[1m==> %s\033[0m\n' "$1"; }
 
 step "Checking prerequisites"
-IDENTITY="${LAPTOPALARM_SIGN_IDENTITY:-$(security find-identity -v -p codesigning | grep "Developer ID Application" | head -1 | sed 's/.*"\(.*\)"/\1/')}"
+IDENTITY="${YOWL_SIGN_IDENTITY:-$(security find-identity -v -p codesigning | grep "Developer ID Application" | head -1 | sed 's/.*"\(.*\)"/\1/')}"
 if [ -z "${IDENTITY}" ]; then
     cat >&2 <<'MSG'
 error: no "Developer ID Application" certificate found.
@@ -54,7 +54,7 @@ step "Running tests"
 swift test 2>&1 | tail -3
 
 step "Building and signing ${VERSION}"
-LAPTOPALARM_SIGN_IDENTITY="${IDENTITY}" LAPTOPALARM_VERSION="${VERSION}" ./Scripts/make-bundle.sh
+YOWL_SIGN_IDENTITY="${IDENTITY}" YOWL_VERSION="${VERSION}" ./Scripts/make-bundle.sh
 codesign --verify --strict --deep-verify "${APP_DIR}"
 echo "signature verified"
 

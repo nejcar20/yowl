@@ -94,7 +94,7 @@ public final class KeychainPasscodeStore: PasscodeStoring {
     private let service: String
     private let account: String
 
-    public init(service: String = "com.jernejkocica.laptopalarm",
+    public init(service: String = "com.jernejkocica.yowl",
                 account: String = "disarm-passcode") {
         self.service = service
         self.account = account

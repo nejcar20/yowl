@@ -8,6 +8,31 @@ import ServiceManagement
 /// project hit lived in `AppModel` — four separate cases of a toggle reading
 /// "on" while the capability was inert — and none was catchable while the model
 /// built real cameras, Keychains and IOKit handles in its initialiser.
+/// The clipboard, behind a protocol so a test can assert what actually reached
+/// it. Which string gets copied is not visible in code review -- both spellings
+/// compile and both report success -- and is only visible to someone standing at
+/// their phone with the ntfy app open.
+public protocol Pasteboarding {
+    /// Writes a value the user is told to treat as a password.
+    func writeSecret(_ string: String)
+}
+
+public struct SystemPasteboard: Pasteboarding {
+    public init() {}
+
+    public func writeSecret(_ string: String) {
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        // Marked concealed so clipboard managers (Paste, Maccy, Alfred) do not
+        // file this away in a searchable history. That marker is a third-party
+        // convention, not an Apple API, so it says nothing about Universal
+        // Clipboard -- but it is the credential the policy tells users to treat
+        // like a password, and this is the protection available.
+        pasteboard.setData(Data(), forType: .init("org.nspasteboard.ConcealedType"))
+        pasteboard.setString(string, forType: .string)
+    }
+}
+
 public struct AppDependencies {
     public var passcodes: PasscodeStoring
     public var preferences: PreferenceStoring
@@ -22,6 +47,7 @@ public struct AppDependencies {
     public var evidence: EvidenceStoring
     public var http: HTTPPosting
     public var clock: AlarmClock
+    public var pasteboard: Pasteboarding
 
     public init(passcodes: PasscodeStoring,
                 preferences: PreferenceStoring,
@@ -35,7 +61,8 @@ public struct AppDependencies {
                 sleepAssertion: SleepPreventing,
                 evidence: EvidenceStoring,
                 http: HTTPPosting,
-                clock: AlarmClock) {
+                clock: AlarmClock,
+                pasteboard: Pasteboarding) {
         self.passcodes = passcodes
         self.preferences = preferences
         self.topicStore = topicStore
@@ -49,6 +76,7 @@ public struct AppDependencies {
         self.evidence = evidence
         self.http = http
         self.clock = clock
+        self.pasteboard = pasteboard
     }
 
     /// The real thing. The only place these concrete types are named.
@@ -66,7 +94,8 @@ public struct AppDependencies {
             sleepAssertion: IOKitSleepAssertion(),
             evidence: FileEvidenceStore(),
             http: URLSessionHTTPClient(),
-            clock: SystemClock())
+            clock: SystemClock(),
+            pasteboard: SystemPasteboard())
     }
 }
 
@@ -125,6 +154,7 @@ public final class AppModel: ObservableObject {
     private let alertResponse: AlertResponse
     private let topicStore: TopicStoring
     private let http: HTTPPosting
+    private let pasteboard: Pasteboarding
     private let lidTrigger: LidAngleTrigger
     /// One list so a per-trigger setting cannot reach some triggers and not others.
     private var allTriggers: [any Trigger] {
@@ -182,6 +212,7 @@ public final class AppModel: ObservableObject {
         let topicStore = dependencies.topicStore
         self.topicStore = topicStore
         self.http = dependencies.http
+        self.pasteboard = dependencies.pasteboard
         let alert = AlertResponse(
             transport: NtfyTransport(topic: topicStore.readTopicValue(),
                                      http: dependencies.http),
@@ -385,7 +416,7 @@ public final class AppModel: ObservableObject {
             // photographs are on. Keeping this in step is what makes that true.
             self.alertResponse.includesPhotographs = applied
             self.settingsMessage = applied ? nil
-                : "LaptopAlarm needs camera access to photograph a thief. Grant it in System Settings ▸ Privacy & Security ▸ Camera."
+                : "Yowl needs camera access to photograph a thief. Grant it in System Settings ▸ Privacy & Security ▸ Camera."
         }
     }
 
@@ -439,21 +470,22 @@ public final class AppModel: ObservableObject {
         }
         alertTopic = topic
         rebuildAlertTransport()
-        settingsMessage = "New link created. Re-subscribe on your phone; the old link no longer receives alerts from this Mac."
+        settingsMessage = "New topic created. Pair your phone again; the old topic no longer receives alerts from this Mac."
     }
 
+    /// What the ntfy app's "Subscribe to topic" field actually wants. Pasting
+    /// the full URL there does not work: topic names cannot contain a slash.
+    public func copyAlertTopic() {
+        guard !alertTopic.isEmpty else { return }
+        pasteboard.writeSecret(alertTopic)
+        settingsMessage = "Topic copied. In the ntfy app tap +, leave the server as ntfy.sh, and paste it."
+    }
+
+    /// The browser form, for opening the feed on a phone that has no app yet.
     public func copyAlertLink() {
         guard !alertSubscribeURL.isEmpty else { return }
-        let pasteboard = NSPasteboard.general
-        pasteboard.clearContents()
-        // Marked concealed so clipboard managers (Paste, Maccy, Alfred) do not
-        // file this away in a searchable history. That marker is a third-party
-        // convention, not an Apple API, so it says nothing about Universal
-        // Clipboard — but it is the credential the policy tells users to treat
-        // like a password, and this is the protection available.
-        pasteboard.setData(Data(), forType: .init("org.nspasteboard.ConcealedType"))
-        pasteboard.setString(alertSubscribeURL, forType: .string)
-        settingsMessage = "Link copied. Open it on your phone, or subscribe to it in the ntfy app."
+        pasteboard.writeSecret(alertSubscribeURL)
+        settingsMessage = "Link copied. Open it in a browser on your phone."
     }
 
     private func rebuildAlertTransport() {
@@ -522,7 +554,7 @@ public final class AppModel: ObservableObject {
         self.refreshProtectionWarning()
             self.refreshProtectionWarning()
             self.settingsMessage = applied ? nil
-                : "LaptopAlarm needs camera access for this. Grant it in System Settings ▸ Privacy & Security ▸ Camera."
+                : "Yowl needs camera access for this. Grant it in System Settings ▸ Privacy & Security ▸ Camera."
         }
     }
 
@@ -619,7 +651,7 @@ public final class AppModel: ObservableObject {
     /// Non-nil while macOS has the login item registered but unapproved.
     private static func pendingApprovalMessage() -> String? {
         SMAppService.mainApp.status == .requiresApproval
-            ? "Approve LaptopAlarm in System Settings ▸ General ▸ Login Items to start it at login."
+            ? "Approve Yowl in System Settings ▸ General ▸ Login Items to start it at login."
             : nil
     }
 

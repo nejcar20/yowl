@@ -1,8 +1,8 @@
 #!/bin/bash
 set -euo pipefail
 
-APP_NAME="LaptopAlarm"
-BUNDLE_ID="com.jernejkocica.laptopalarm"
+APP_NAME="Yowl"
+BUNDLE_ID="com.jernejkocica.yowl"
 APP_DIR="build/${APP_NAME}.app"
 
 # Universal, so the download runs on Intel MacBooks as well as Apple Silicon.
@@ -33,7 +33,7 @@ cat > "${APP_DIR}/Contents/Info.plist" <<PLIST
     <key>CFBundleExecutable</key><string>${APP_NAME}</string>
     <key>CFBundleIdentifier</key><string>${BUNDLE_ID}</string>
     <key>CFBundlePackageType</key><string>APPL</string>
-    <key>CFBundleShortVersionString</key><string>${LAPTOPALARM_VERSION:-0.1.0}</string>
+    <key>CFBundleShortVersionString</key><string>${YOWL_VERSION:-0.1.0}</string>
     <key>CFBundleVersion</key><string>1</string>
     <key>LSMinimumSystemVersion</key><string>14.0</string>
     <!-- Menu bar only: no Dock icon, no main window. -->
@@ -45,7 +45,7 @@ cat > "${APP_DIR}/Contents/Info.plist" <<PLIST
          camera, rather than prompting. The wording is shown verbatim in the
          permission dialog and is the whole of the user's decision. -->
     <key>NSCameraUsageDescription</key>
-    <string>LaptopAlarm watches for the laptop being picked up, and — if you switch it on — photographs whoever is in front of it when the alarm fires. Everything stays on this Mac unless you set up somewhere to send it.</string>
+    <string>Yowl watches for the laptop being picked up, and — if you switch it on — photographs whoever is in front of it when the alarm fires. Everything stays on this Mac unless you set up somewhere to send it.</string>
 </dict>
 </plist>
 PLIST
@@ -59,7 +59,7 @@ PLIST
 # be signed inside-out before the bundle itself.
 # The hardened runtime blocks camera access outright unless the app carries this
 # entitlement -- the permission prompt never even appears without it.
-ENTITLEMENTS="$(mktemp -t laptopalarm-entitlements.plist)"
+ENTITLEMENTS="$(mktemp -t yowl-entitlements.plist)"
 cat > "${ENTITLEMENTS}" <<'ENT'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -74,7 +74,7 @@ trap 'rm -f "${ENTITLEMENTS}"' EXIT
 
 # Local development signs with whatever Apple Development identity is present.
 # Releases override this with the Indigo Labs Developer ID via release.sh.
-IDENTITY="${LAPTOPALARM_SIGN_IDENTITY:-$(security find-identity -v -p codesigning \
+IDENTITY="${YOWL_SIGN_IDENTITY:-$(security find-identity -v -p codesigning \
     | grep "Apple Development" | head -1 | sed 's/.*"\(.*\)"/\1/')}"
 # Captured to a variable first: `grep -q` exits on its first match and can
 # SIGPIPE the producer, which under `set -o pipefail` fails the pipeline and

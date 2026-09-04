@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Point the landing page and docs at the real repository.
 #
-#   ./Scripts/set-repo.sh indigolabs/laptopalarm
+#   ./Scripts/set-repo.sh indigolabs/yowl
 #
 # Until this is run, docs/index.html links to github.com/OWNER/... and every
 # one of those links is dead.
@@ -22,7 +22,7 @@ if [[ -z "$remaining_before" ]]; then
 fi
 
 while IFS= read -r f; do
-  perl -pi -e "s{github\.com/OWNER/laptopalarm}{github.com/$slug}g" "$f"
+  perl -pi -e "s{github\.com/OWNER/yowl}{github.com/$slug}g" "$f"
   echo "  updated $(basename "$f")"
 done <<< "$remaining_before"
 

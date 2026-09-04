@@ -45,7 +45,7 @@ public final class AlertResponse: Response {
     public func sendTest() async -> Bool {
         do {
             try await transport.send(AlertPayload(
-                title: "LaptopAlarm",
+                title: "Yowl",
                 body: "Test alert — your Mac can reach you.",
                 urgency: .normal,
                 occurredAt: Date(),
@@ -65,7 +65,7 @@ public final class AlertResponse: Response {
         let attachPhotographs = includesPhotographs
         inFlight = Task { [transport, evidence] in
             let payload = AlertPayload(
-                title: "LaptopAlarm",
+                title: "Yowl",
                 body: Self.describe(context),
                 urgency: .critical,
                 occurredAt: context.firedAt,
