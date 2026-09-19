@@ -58,6 +58,27 @@ YOWL_SIGN_IDENTITY="${IDENTITY}" YOWL_VERSION="${VERSION}" ./Scripts/make-bundle
 codesign --verify --strict --deep-verify "${APP_DIR}"
 echo "signature verified"
 
+# Two notarisation passes, and both are load-bearing.
+#
+# The app is notarised and stapled FIRST, so its ticket travels inside the
+# bundle. Stapling only the disk image leaves the app unable to prove itself
+# once it has been dragged out of it, and a first launch with no network then
+# warns -- verified: the app inside a DMG-only-stapled image reported "does not
+# have a ticket stapled to it".
+#
+# The image is then signed and notarised in its own right. An unsigned DMG is
+# assessed as "no usable signature", and nothing detects tampering with it
+# between Apple and the person downloading it.
+step "Notarising the app (this usually takes a few minutes)"
+APP_ZIP="$(mktemp -d)/${APP_NAME}.zip"
+ditto -c -k --keepParent "${APP_DIR}" "${APP_ZIP}"
+xcrun notarytool submit "${APP_ZIP}" --keychain-profile "${PROFILE}" --wait
+rm -rf "$(dirname "${APP_ZIP}")"
+
+step "Stapling the app"
+xcrun stapler staple "${APP_DIR}"
+xcrun stapler validate "${APP_DIR}"
+
 step "Packaging disk image"
 rm -f "${DMG}"
 STAGING="$(mktemp -d)"
@@ -66,17 +87,18 @@ ln -s /Applications "${STAGING}/Applications"
 cp docs/PRIVACY.md "${STAGING}/Privacy.md"
 hdiutil create -volname "${APP_NAME}" -srcfolder "${STAGING}" -ov -format UDZO "${DMG}" >/dev/null
 rm -rf "${STAGING}"
-echo "created ${DMG}"
+codesign --force --sign "${IDENTITY}" "${DMG}"
+echo "created and signed ${DMG}"
 
-step "Notarising (this usually takes a few minutes)"
+step "Notarising the disk image"
 xcrun notarytool submit "${DMG}" --keychain-profile "${PROFILE}" --wait
 
-step "Stapling"
+step "Stapling the disk image"
 xcrun stapler staple "${DMG}"
 xcrun stapler validate "${DMG}"
 
 step "Done"
-spctl --assess --type open --context context:primary-signature -v "${DMG}" 2>&1 || true
+spctl --assess --type open --context context:primary-signature -v "${DMG}"
 echo
 echo "Ship this file: ${DMG}"
 echo "It will open on any Mac without a Gatekeeper warning."

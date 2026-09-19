@@ -86,8 +86,11 @@ See [PRIVACY.md](docs/PRIVACY.md).
 
 ## Install
 
-There is no signed download yet — see [Why there is no download](#why-there-is-no-download).
-Building it yourself takes about a minute and needs nothing but Xcode.
+**[Download Yowl 1.0.0](https://github.com/nejcar20/yowl/releases/download/v1.0.0/Yowl-1.0.0.dmg)**
+— 1.2 MB, signed and notarised by Apple, so it opens with a double-click. Drag
+it to Applications.
+
+Or build it yourself; it takes about a minute and needs nothing but Xcode.
 
 **You need:** macOS 14 or later, and Xcode 16 or later (or just the Command Line
 Tools) for Swift 6.2+. Built and tested on Swift 6.3.3 / Xcode 26.6.
@@ -120,23 +123,18 @@ macOS 14 or later. Universal binary — Apple Silicon and Intel. The lid trigger
 needs the hinge angle sensor, which Intel Macs do not have; it stays hidden
 there. Everything else works on both.
 
-## Why there is no download
+## Why it is not on the Mac App Store
 
-A `.dmg` that opens with a double-click has to be signed with an Apple
-**Developer ID Application** certificate and then notarised by Apple. Anything
-less and macOS tells whoever downloads it that "the developer cannot be
-verified" — a poor first instruction from an anti-theft app, and one that also
-costs you the camera permission on every update.
+Locking the screen has no public API, so Yowl calls a private one — an automatic
+rejection. A Store build would also lose the lid trigger (raw IOKit HID access is
+not grantable under the sandbox) and the unlock-to-disarm behaviour (sandboxed
+apps do not receive the screen-unlock notification), which would put the passcode
+back. That is most of the reason the app is worth running, so it is distributed
+directly instead: signed with a Developer ID certificate and notarised by Apple,
+which is what lets the download open without a warning.
 
-That certificate can only be issued by the Account Holder of an Apple Developer
-account, which is being arranged. `./Scripts/release.sh 1.0.0` does the whole
-build-sign-notarise-staple sequence once one exists, and refuses early with an
-explanation when it does not.
-
-The Mac App Store is not an alternative here: locking the screen has no public
-API, so Yowl calls a private one, and that is an automatic rejection. A Store
-build would have to drop the screen lock and the lid trigger — half the reason
-the app is worth running.
+Releases are cut with `./Scripts/release.sh <version>` — build, sign, notarise
+the app, staple it, package and sign the image, notarise and staple that too.
 
 ## Contributing
 
