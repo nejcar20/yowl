@@ -3,270 +3,261 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Yowl — the incident</title>
-<meta name="description" content="A theft, second by second, in the real Yowl interface. Every screenshot is the shipping app and every timing comes from the code.">
+<title>Yowl — somebody tried to take this laptop</title>
+<meta name="description" content="A theft, typed out second by second, in the real Yowl interface.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Courier+Prime:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
 <style>
   :root{
-    --ground:#0E141A;
-    --panel:#161F28;
-    --edge:#22303C;
-    --amber:#FFB82A;
-    --quiet:#5FCBBB;
-    --ink:#E9EDF0;
-    --muted:#8394A2;
-    --mono:'IBM Plex Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
-    --display:'Archivo',system-ui,-apple-system,sans-serif;
-    /* One accent variable drives the whole page. Quiet states tint teal and
-       the alarm floods amber — nothing else on the page is allowed amber, which
-       is what makes the firing state land. */
-    --accent:var(--quiet);
+    --wall:#3A3B36;        /* painted café wall the notices hang on */
+    --paper:#EDEAE3;       /* newsprint: grey-white, deliberately not cream */
+    --paper-2:#E4E0D6;
+    --ink:#1A1917;
+    --faded:#6E6A61;
+    --stamp:#B32B20;
+    --tape:rgba(232,223,200,.58);
+    --poster:'Oswald',system-ui,sans-serif;
+    --typed:'Courier Prime',ui-monospace,Menlo,monospace;
   }
-  body.is-firing{ --accent:var(--amber); }
-
   *{box-sizing:border-box}
-  html{-webkit-text-size-adjust:100%}
+  html{-webkit-text-size-adjust:100%;overflow-x:hidden}
+  body{overflow-x:hidden}
   body{
-    margin:0;background:var(--ground);color:var(--ink);
-    font-family:var(--display);font-size:17px;line-height:1.6;
-    -webkit-font-smoothing:antialiased;
+    margin:0;color:var(--ink);font-family:var(--typed);
+    font-size:15px;line-height:1.75;background:var(--wall);
+    /* Paint texture, cheap: two crossed gradients, no image request. */
+    background-image:
+      repeating-linear-gradient(94deg, rgba(0,0,0,.05) 0 2px, transparent 2px 7px),
+      repeating-linear-gradient(4deg, rgba(255,255,255,.025) 0 1px, transparent 1px 6px);
   }
-  .wrap{max-width:1080px;margin:0 auto;padding:0 24px}
+  .yard{max-width:940px;margin:0 auto;padding:0 20px 80px}
   a{color:inherit}
-  :focus-visible{outline:2px solid var(--accent);outline-offset:3px;border-radius:4px}
+  :focus-visible{outline:2px solid var(--stamp);outline-offset:3px}
 
-  /* ---------- the rail: the app lives in the menu bar, so the page wears one */
-  .rail{
-    position:fixed;top:0;left:0;right:0;height:3px;z-index:50;
-    background:var(--edge);transition:background .3s ease;
+  /* ---------- a sheet taped to the wall ---------- */
+  .sheet{
+    position:relative;background:var(--paper);color:var(--ink);
+    padding:44px 42px 40px;
+    box-shadow:0 1px 0 rgba(255,255,255,.28) inset, 0 14px 30px rgba(0,0,0,.34);
+    background-image:
+      repeating-linear-gradient(0deg, rgba(0,0,0,.016) 0 1px, transparent 1px 3px);
   }
-  body.is-firing .rail{background:var(--amber);animation:throb 1s steps(2,end) infinite}
-  @keyframes throb{0%,50%{opacity:1}51%,100%{opacity:.25}}
+  /* Tape, because paper does not hold itself to a wall. */
+  .sheet::before,.sheet::after{
+    content:"";position:absolute;top:-13px;width:104px;height:27px;
+    background:var(--tape);box-shadow:0 1px 3px rgba(0,0,0,.2);
+  }
+  .sheet::before{left:26px;transform:rotate(-2.6deg)}
+  .sheet::after{right:26px;transform:rotate(2.2deg)}
+  .sheet--tilt{transform:rotate(-.35deg)}
+  .sheet--tilt2{transform:rotate(.4deg)}
 
-  /* ---------- masthead ---------- */
-  .top{
-    display:flex;align-items:center;justify-content:space-between;gap:16px;
-    padding:22px 0 18px;
-    font-family:var(--mono);font-size:13px;letter-spacing:.02em;
+  .slip{
+    display:flex;align-items:center;justify-content:space-between;gap:14px;
+    flex-wrap:wrap;background:var(--paper-2);margin:26px 0 40px;
+    padding:9px 16px;transform:rotate(-.5deg);
+    box-shadow:0 6px 16px rgba(0,0,0,.28);font-size:13px;
   }
-  .mark{display:flex;align-items:center;gap:10px;font-weight:600}
-  .mark svg{display:block}
-  .top nav{display:flex;gap:20px}
-  .top nav a{color:var(--muted);text-decoration:none}
-  .top nav a:hover{color:var(--ink)}
+  .slip b{font-family:var(--poster);font-weight:600;letter-spacing:.04em;font-size:16px}
+  .slip nav{display:flex;gap:16px}
+  .slip a{text-decoration:none;border-bottom:1px solid rgba(26,25,23,.3);padding-bottom:1px}
+  .slip a:hover{border-bottom-color:var(--ink)}
 
-  /* ---------- the scene: state on the left, the app where it really sits ---- */
-  .scene{
-    display:grid;grid-template-columns:minmax(0,1fr) 268px;gap:44px;
-    align-items:start;padding:54px 0 46px;
+  .eyebrow{
+    font-size:12px;letter-spacing:.14em;text-transform:uppercase;
+    color:var(--faded);margin:0 0 14px;
   }
-  .slug{
-    font-family:var(--mono);font-size:12px;letter-spacing:.2em;text-transform:uppercase;
-    color:var(--accent);margin:0 0 20px;transition:color .3s ease;
-  }
-  .slug .dim{color:var(--muted)}
   h1{
-    font-family:var(--display);font-weight:800;
-    font-size:clamp(2.5rem,6vw,4.2rem);line-height:.94;letter-spacing:-.035em;
-    margin:0 0 20px;max-width:13ch;
+    font-family:var(--poster);font-weight:700;text-transform:uppercase;
+    font-size:clamp(2.1rem,6.4vw,4.1rem);line-height:.96;letter-spacing:.005em;
+    margin:0 0 18px;max-width:15ch;
   }
-  .say{font-size:clamp(1rem,1.9vw,1.15rem);color:#BAC6CF;max-width:46ch;margin:0 0 30px}
-  .say b{color:var(--ink);font-weight:600}
+  .rule{border:0;border-top:2px solid var(--ink);margin:0 0 20px}
+  .rule--thin{border-top:1px solid rgba(26,25,23,.28);margin:26px 0}
+  .blurb{margin:0 0 26px;max-width:54ch;font-size:15.5px}
+  .blurb b{font-weight:700}
 
-  .acts{display:flex;gap:10px;flex-wrap:wrap}
+  .notice-grid{display:grid;grid-template-columns:minmax(0,1fr) 252px;gap:36px;align-items:start}
+  @media (max-width:760px){ .notice-grid{grid-template-columns:1fr;gap:28px} }
+
+  /* The app as a photograph printed and pinned to the sheet. */
+  .photo{margin:0;transform:rotate(1.1deg)}
+  .photo .frames{position:relative;background:#111;padding:7px;box-shadow:0 6px 14px rgba(0,0,0,.3)}
+  .photo img{display:block;width:100%;height:auto;opacity:0}
+  .photo img.shown{opacity:1;position:relative}
+  .photo img:not(.shown){position:absolute;inset:7px;width:calc(100% - 14px);pointer-events:none}
+  .photo figcaption{font-size:12px;color:var(--faded);margin-top:9px;text-align:center}
+
+  .acts{display:flex;gap:12px;flex-wrap:wrap;margin:0}
   .act{
-    font-family:var(--display);font-size:15px;font-weight:600;
-    border-radius:8px;padding:12px 20px;cursor:pointer;border:1px solid transparent;
-    background:var(--accent);color:#11171C;transition:filter .15s,background .3s ease;
+    font-family:var(--poster);font-weight:600;text-transform:uppercase;
+    letter-spacing:.06em;font-size:15px;cursor:pointer;
+    background:var(--ink);color:var(--paper);border:2px solid var(--ink);
+    padding:10px 20px;transition:background .12s,color .12s;
   }
-  .act:hover{filter:brightness(1.1)}
-  .act--quiet{background:transparent;border-color:var(--edge);color:var(--ink)}
-  .act--quiet:hover{border-color:var(--muted);filter:none}
+  .act:hover{background:transparent;color:var(--ink)}
+  .act--plain{background:transparent;color:var(--ink)}
+  .act--plain:hover{background:var(--ink);color:var(--paper)}
 
-  /* The popover hangs off a strip of menu bar, because that is where it hangs.
-     Without it the screenshot is a white rectangle floating in the dark. */
-  .mount{position:relative;padding-top:22px}
-  .menubar{
-    position:absolute;top:0;left:0;right:0;height:22px;border-radius:5px 5px 0 0;
-    background:#1B242D;border:1px solid var(--edge);border-bottom:none;
-    display:flex;align-items:center;justify-content:flex-end;gap:9px;padding:0 10px;
+  .record{margin-top:34px}
+  .record h2{
+    font-size:12px;letter-spacing:.14em;text-transform:uppercase;
+    color:var(--faded);font-weight:400;margin:0 0 4px;
   }
-  .menubar i{width:9px;height:9px;border-radius:2px;background:#2E3D49;display:block}
-  .menubar i.live{background:var(--accent);transition:background .3s ease}
-  .frames{
-    position:relative;border:1px solid var(--edge);border-radius:0 0 5px 5px;
-    overflow:hidden;background:#EDEDED;
+  ol.typed{list-style:none;margin:0;padding:0;min-height:150px}
+  ol.typed li{
+    display:grid;grid-template-columns:74px 1fr;gap:16px;align-items:baseline;
+    padding:5px 0;font-size:14.5px;border-bottom:1px dotted rgba(26,25,23,.22);
+    animation:type .18s steps(6,end) both;
   }
-  .frames img{display:block;width:100%;height:auto;opacity:0;transition:opacity .2s ease}
-  .frames img.shown{opacity:1;position:relative}
-  .frames img:not(.shown){position:absolute;inset:0;pointer-events:none}
-  .mount figcaption{
-    font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;
-    color:var(--muted);margin-top:12px;text-align:right;
-  }
+  ol.typed .at{color:var(--faded);font-variant-numeric:tabular-nums}
+  ol.typed li.loud{font-weight:700}
+  ol.typed li.loud .at{color:var(--stamp)}
+  ol.typed .none{grid-template-columns:1fr;color:var(--faded);border-bottom:none;font-style:italic}
+  @keyframes type{from{opacity:0}to{opacity:1}}
+  @media (max-width:520px){ ol.typed li{grid-template-columns:56px 1fr;gap:10px} }
 
-  /* ---------- the log: the evidence, given the page's full width ------------ */
-  .ledger{border-top:1px solid var(--edge);padding:30px 0 70px}
-  .ledger-head{
-    display:flex;align-items:baseline;justify-content:space-between;gap:16px;
-    font-family:var(--mono);font-size:12px;letter-spacing:.2em;text-transform:uppercase;
-    color:var(--muted);margin-bottom:22px;flex-wrap:wrap;
+  /* ---------- the stamp: the one bold thing on the page ---------- */
+  .stamp{
+    position:absolute;right:34px;bottom:28px;z-index:4;
+    font-family:var(--poster);font-weight:700;text-transform:uppercase;
+    color:var(--stamp);border:4px solid var(--stamp);border-radius:3px;
+    padding:6px 14px 4px;letter-spacing:.08em;font-size:26px;line-height:1.05;
+    text-align:center;opacity:0;visibility:hidden;transform:rotate(-13deg);
+    pointer-events:none;mix-blend-mode:multiply;
   }
-  .ledger-head .state{color:var(--accent);transition:color .3s ease}
-  ol.tape{list-style:none;margin:0;padding:0;min-height:124px}
-  ol.tape li{
-    display:grid;grid-template-columns:86px 1fr;gap:20px;align-items:baseline;
-    font-family:var(--mono);font-size:clamp(14px,1.6vw,16.5px);
-    padding:11px 0;border-bottom:1px solid #1A242E;color:#C6D2DA;
-    animation:cut .3s ease both;
+  body.struck .stamp{visibility:visible}
+  .stamp small{display:block;font-size:11px;letter-spacing:.16em;font-weight:400}
+  body.struck .stamp{animation:slam .42s cubic-bezier(.2,1.4,.4,1) forwards}
+  @keyframes slam{
+    0%{opacity:0;transform:rotate(-13deg) scale(2.6)}
+    60%{opacity:.95;transform:rotate(-13deg) scale(.96)}
+    100%{opacity:.88;transform:rotate(-13deg) scale(1)}
   }
-  ol.tape .at{color:var(--muted);font-variant-numeric:tabular-nums;letter-spacing:.04em}
-  ol.tape li.loud{color:var(--ink)}
-  ol.tape li.loud .at{color:var(--amber)}
-  ol.tape .idle{
-    grid-template-columns:1fr;color:var(--muted);border-bottom:none;padding-top:14px;
-  }
-  @keyframes cut{from{opacity:0;transform:translateX(-6px)}to{opacity:1;transform:none}}
+  @media (max-width:760px){ .stamp{right:18px;bottom:16px;font-size:20px} }
 
-  /* ---------- plain sections ---------- */
-  .sheet{border-top:1px solid var(--edge);padding:56px 0}
-  .sheet h2{
-    font-family:var(--mono);font-size:12px;letter-spacing:.2em;text-transform:uppercase;
-    color:var(--muted);font-weight:500;margin:0 0 28px;
+  .pair{display:grid;grid-template-columns:1fr 1fr;gap:12px 34px;margin:0}
+  @media (max-width:700px){ .pair{grid-template-columns:1fr} }
+  .pair dt{
+    font-family:var(--poster);font-weight:600;text-transform:uppercase;
+    letter-spacing:.05em;font-size:15px;margin-top:14px;
   }
-  .rows{display:grid;gap:0;max-width:80ch}
-  .rows div{
-    display:grid;grid-template-columns:200px 1fr;gap:24px;align-items:baseline;
-    padding:16px 0;border-bottom:1px solid #1A242E;font-size:16px;color:#BAC6CF;
-  }
-  .rows dt,.rows b{
-    font-family:var(--mono);font-size:13px;letter-spacing:.06em;text-transform:uppercase;
-    color:var(--ink);font-weight:500;
-  }
-  @media (max-width:640px){ .rows div{grid-template-columns:1fr;gap:6px} }
+  .pair dd{margin:2px 0 0;color:#3E3A33;font-size:14.5px}
 
-  .aside{
-    border-left:2px solid var(--edge);padding-left:20px;margin-top:38px;
-    color:var(--muted);font-size:14.5px;max-width:62ch;
+  .footnote{
+    margin-top:30px;padding-left:16px;border-left:3px solid rgba(26,25,23,.25);
+    color:var(--faded);font-size:13.5px;max-width:62ch;
   }
-  .aside b{color:#BAC6CF;font-weight:500}
-
-  .get{display:flex;gap:12px;flex-wrap:wrap;margin-top:36px}
+  .get{display:flex;gap:12px;flex-wrap:wrap;margin-top:28px}
   .get a{
-    display:inline-block;text-decoration:none;font-weight:600;font-size:15.5px;
-    padding:13px 22px;border-radius:8px;border:1px solid var(--edge);color:var(--ink);
-    transition:border-color .15s;
+    font-family:var(--poster);font-weight:600;text-transform:uppercase;letter-spacing:.06em;
+    font-size:15px;text-decoration:none;padding:10px 20px;border:2px solid var(--ink);
   }
-  .get a:hover{border-color:var(--muted)}
-  .get a.solid{background:var(--ink);color:#11171C;border-color:var(--ink)}
-  .get a.solid:hover{background:#fff}
+  .get a.fill{background:var(--ink);color:var(--paper)}
+  .get a:hover{background:var(--stamp);border-color:var(--stamp);color:var(--paper)}
 
-  footer{
-    border-top:1px solid var(--edge);padding:30px 0 60px;
-    font-family:var(--mono);font-size:12.5px;color:var(--muted);
-    display:flex;gap:18px;justify-content:space-between;flex-wrap:wrap;
+  .torn{
+    margin:34px 0 0;padding:14px 18px;background:var(--paper-2);
+    transform:rotate(.45deg);box-shadow:0 6px 16px rgba(0,0,0,.26);
+    display:flex;gap:16px;justify-content:space-between;flex-wrap:wrap;font-size:12.5px;
   }
-  footer a{color:var(--muted)}
-  footer a:hover{color:var(--ink)}
+  .torn a{text-decoration:none;border-bottom:1px solid rgba(26,25,23,.3)}
 
-  @media (max-width:520px){
-    /* 86px of timestamp column on a phone squeezes every entry onto two lines. */
-    ol.tape li{grid-template-columns:58px 1fr;gap:14px}
+  @media (max-width:700px){
+    /* A rotated full-width block has a bounding box wider than the viewport,
+       which is 58px of horizontal scroll on a phone. The tilt is charm on a
+       desk and a bug on a phone, so it goes. */
+    .sheet--tilt,.sheet--tilt2,.slip,.torn,.photo{transform:none}
+    .sheet{padding:34px 24px 32px}
   }
-  @media (max-width:820px){
-    .scene{grid-template-columns:1fr;gap:36px;padding-top:40px}
-    .mount{max-width:300px}
-    .mount figcaption{text-align:left}
-  }
+
   @media (prefers-reduced-motion:reduce){
     *{animation:none!important;transition:none!important}
+    body.struck .stamp{opacity:.88;transform:rotate(-13deg) scale(1)}
   }
 </style>
 </head>
 <body>
-<div class="rail" aria-hidden="true"></div>
 
-<div class="wrap">
-  <header class="top">
-    <span class="mark">
-      <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true">
-        <path d="M10 1.6 17 4.4v6.1c0 4-2.9 6.9-7 7.9-4.1-1-7-3.9-7-7.9V4.4Z" fill="#FFB82A"/>
-        <circle cx="10" cy="9.4" r="1.5" fill="#0E141A"/>
-        <path d="M12.4 6.8a4 4 0 0 1 0 5.2M14.4 5.2a6.6 6.6 0 0 1 0 8.4" stroke="#0E141A" stroke-width="1.4" fill="none" stroke-linecap="round"/>
-      </svg>
-      Yowl
-    </span>
+<div class="yard">
+  <div class="slip">
+    <b>YOWL</b>
     <nav>
       <a href="./">Home</a>
       <a href="https://github.com/nejcar20/yowl">Source</a>
       <a href="https://github.com/nejcar20/yowl/releases/latest">Download</a>
     </nav>
-  </header>
+  </div>
 
-  <main class="scene">
-    <div>
-      <p class="slug" id="slug">Café table <span class="dim">· nothing armed</span></p>
-      <h1 id="headline">Your laptop, unattended</h1>
-      <p class="say" id="blurb">
-        Yowl sits in the menu bar with no window and no Dock icon. Nothing is
-        watching until you press <b>Arm</b> — the camera is not running and
-        nothing is being recorded.
-      </p>
-      <div class="acts" id="acts"></div>
-    </div>
+  <article class="sheet sheet--tilt">
+    <div class="stamp" id="stamp" aria-hidden="true">Alarm<small>00:00:00</small></div>
 
-    <figure class="mount" style="margin:0">
-      <div class="menubar" aria-hidden="true"><i></i><i></i><i class="live" id="dot"></i></div>
-      <div class="frames">
-        <img id="fr-quiet" class="shown" src="img/state-disarmed.png" alt="Yowl disarmed, showing an Arm button">
-        <img id="fr-armed" src="img/state-armed.png" alt="Yowl armed, saying to unlock your Mac to disarm">
-        <img id="fr-firing" src="img/state-firing.png" alt="Yowl in alarm: siren sounding, Quit disabled">
+    <p class="eyebrow" id="eyebrow">Café table · nothing armed</p>
+    <h1 id="headline">Your laptop, left on the table</h1>
+    <hr class="rule">
+
+    <div class="notice-grid">
+      <div>
+        <p class="blurb" id="blurb">
+          Yowl sits in the menu bar. No window, no Dock icon. Nothing is watching
+          until you press <b>Arm</b> — the camera is not running and nothing is
+          being recorded.
+        </p>
+        <div class="acts" id="acts"></div>
       </div>
-      <figcaption>The actual app, not a mockup</figcaption>
-    </figure>
-  </main>
 
-  <section class="ledger">
-    <div class="ledger-head">
-      <span>Incident log</span>
-      <span class="state" id="stateword">Standing by</span>
-    </div>
-    <ol class="tape" id="tape">
-      <li class="idle">Press Arm to begin.</li>
-    </ol>
-  </section>
-
-  <section class="sheet">
-    <h2>What you can change</h2>
-    <div class="rows">
-      <div><b>Triggers</b><span>The charger is on by default. The camera and the lid sensor are opt-in, and the lid one only appears on Macs that have the hinge sensor.</span></div>
-      <div><b>Responses</b><span>Siren, screen lock, photographs, phone alert — each switches off independently, and arming is refused if you switch off everything that could catch a theft.</span></div>
-      <div><b>Sensitivity</b><span>A live motion score at your own desk, so you can see whether your background defeats the detection before you trust it.</span></div>
-      <div><b>Grace period</b><span>None by default — the siren fires the instant the charger is pulled. Give yourself seconds if you would rather.</span></div>
-      <div><b>Phone alerts</b><span>Paired by scanning a code, with separate paths for iPhone and Android, because only Android can open the ntfy app from a scan.</span></div>
-      <div><b>Passcode</b><span>Not required. Unlocking your Mac is the disarm. Set one only if you switch the screen lock off.</span></div>
+      <figure class="photo">
+        <div class="frames">
+          <img id="fr-quiet" class="shown" src="img/state-disarmed.png" alt="Yowl disarmed, showing an Arm button">
+          <img id="fr-armed" src="img/state-armed.png" alt="Yowl armed, saying to unlock your Mac to disarm">
+          <img id="fr-firing" src="img/state-firing.png" alt="Yowl in alarm: siren sounding, Quit disabled">
+        </div>
+        <figcaption>the actual app, photographed</figcaption>
+      </figure>
     </div>
 
-    <p class="aside">
-      <b>This page is a walkthrough, not the app.</b> The screenshots are the
-      shipping interface and the timings are the real ones — the volume really
-      is taken back every second, the photographs really do reach ten seconds
-      back. But a web page cannot hold your camera or make your Mac scream, so
-      the sound and the lock are described rather than performed.
+    <hr class="rule rule--thin">
+
+    <div class="record">
+      <h2>What happened, and when</h2>
+      <ol class="typed" id="tape">
+        <li class="none">Nothing yet. Press Arm.</li>
+      </ol>
+    </div>
+  </article>
+
+  <article class="sheet sheet--tilt2" style="margin-top:56px">
+    <p class="eyebrow">Also pinned here</p>
+    <h1 style="font-size:clamp(1.5rem,3.4vw,2.2rem);max-width:22ch">What you can change</h1>
+    <hr class="rule">
+    <dl class="pair">
+      <div><dt>Triggers</dt><dd>Charger on by default. Camera and lid sensor are opt-in; the lid one only appears on Macs that have the hinge sensor.</dd></div>
+      <div><dt>Responses</dt><dd>Siren, screen lock, photographs, phone alert — each switches off on its own, and arming is refused if nothing is left that could catch a theft.</dd></div>
+      <div><dt>Sensitivity</dt><dd>A live motion score at your own desk, so you can see whether your background defeats the detection before trusting it.</dd></div>
+      <div><dt>Grace period</dt><dd>None by default. The siren fires the instant the charger is pulled.</dd></div>
+      <div><dt>Phone alerts</dt><dd>Paired by scanning a code, with different paths for iPhone and Android — only Android can open the ntfy app from a scan.</dd></div>
+      <div><dt>Passcode</dt><dd>Not required. Unlocking your Mac is the disarm.</dd></div>
+    </dl>
+
+    <p class="footnote">
+      This page is a walkthrough, not the app. The photographs are the shipping
+      interface and the timings are the real ones — the volume really is taken
+      back every second, the photographs really do reach ten seconds back. A web
+      page cannot hold your camera or make your Mac scream, so the sound and the
+      lock are written down rather than performed.
     </p>
 
     <div class="get">
-      <a class="solid" href="https://github.com/nejcar20/yowl/releases/download/v1.0.0/Yowl-1.0.0.dmg">Download for macOS</a>
+      <a class="fill" href="https://github.com/nejcar20/yowl/releases/download/v1.0.0/Yowl-1.0.0.dmg">Download</a>
       <a href="./">How it tells a thief from a passer-by</a>
     </div>
-  </section>
+  </article>
 
-  <footer>
+  <div class="torn">
     <span>MIT licensed · <a href="mailto:jernejkocica@gmail.com">jernejkocica@gmail.com</a></span>
     <span><a href="https://github.com/nejcar20/yowl">GitHub</a> · <a href="https://github.com/nejcar20/yowl/issues">Report something</a></span>
-  </footer>
+  </div>
 </div>
 
 <script>
@@ -276,32 +267,32 @@
     armed: document.getElementById('fr-armed'),
     firing: document.getElementById('fr-firing')
   };
-  var slug = document.getElementById('slug'),
+  var eyebrow = document.getElementById('eyebrow'),
       headline = document.getElementById('headline'),
       blurb = document.getElementById('blurb'),
       acts = document.getElementById('acts'),
       tape = document.getElementById('tape'),
-      stateword = document.getElementById('stateword');
+      stamp = document.getElementById('stamp');
 
-  // Timings are the shipping ones: SirenResponse.volumeHoldInterval is 1s and
-  // the evidence buffer reaches 10s back before the trigger.
+  // Timings are the shipping ones: the volume hold interval is 1s and the
+  // evidence buffer reaches 10s back before the trigger.
   var SCENES = {
     quiet: {
-      slug: 'Café table <span class="dim">· nothing armed</span>',
-      headline: 'Your laptop, unattended',
-      blurb: 'Yowl sits in the menu bar with no window and no Dock icon. Nothing is watching until you press <b>Arm</b> — the camera is not running and nothing is being recorded.',
-      frame: 'quiet', state: 'Standing by', firing: false,
+      eyebrow: 'Café table · nothing armed',
+      headline: 'Your laptop, left on the table',
+      blurb: 'Yowl sits in the menu bar. No window, no Dock icon. Nothing is watching until you press <b>Arm</b> — the camera is not running and nothing is being recorded.',
+      frame: 'quiet', struck: false,
       acts: [{ label: 'Arm it', to: 'armed' }],
       log: []
     },
     armed: {
-      slug: 'Café table <span class="dim">· armed</span>',
-      headline: 'You walk away',
+      eyebrow: 'Café table · armed',
+      headline: 'You go to the counter',
       blurb: 'The charger trigger is listening. Settings freeze while armed — switching the siren off mid-alarm would be a disarm that never met your password — and <b>Quit is disabled</b>.',
-      frame: 'armed', state: 'Armed', firing: false,
+      frame: 'armed', struck: false,
       acts: [
-        { label: 'Someone unplugs the charger', to: 'firing' },
-        { label: 'Come back and unlock', to: 'quiet', quiet: true }
+        { label: 'Someone takes it', to: 'firing' },
+        { label: 'Come back and unlock', to: 'quiet', plain: true }
       ],
       log: [
         ['00.00', 'Charger trigger listening', false],
@@ -309,10 +300,10 @@
       ]
     },
     firing: {
-      slug: 'Café table <span class="dim">· alarm</span>',
-      headline: 'Taken',
-      blurb: 'All of it at once. The thief is holding a laptop that is screaming, locked, and has already sent your phone a photograph of them.',
-      frame: 'firing', state: 'Alarm', firing: true,
+      eyebrow: 'Café table · alarm',
+      headline: 'Somebody tried to take this laptop',
+      blurb: 'All of it at once. They are holding a machine that is screaming, locked, and has already sent your phone a photograph of them.',
+      frame: 'firing', struck: true,
       acts: [{ label: 'Unlock your Mac', to: 'quiet' }],
       log: [
         ['00.00', 'Charger unplugged — alarm fires', true],
@@ -325,8 +316,6 @@
       ]
     }
   };
-  // Returning to quiet is a different beat from never having armed, so it gets
-  // its own log without needing a fourth scene.
   var STOOD_DOWN = [
     ['00.00', 'Mac unlocked — that is the disarm', false],
     ['00.00', 'Siren stopped, your volume and output restored', false],
@@ -335,14 +324,19 @@
 
   var still = window.matchMedia('(prefers-reduced-motion: reduce)');
   var pending = [];
-
   function clearPending(){ pending.forEach(clearTimeout); pending = []; }
 
-  function writeLog(rows){
+  function stampTime(){
+    var d = new Date();
+    return [d.getHours(), d.getMinutes(), d.getSeconds()]
+      .map(function(n){ return (n < 10 ? '0' : '') + n; }).join(':');
+  }
+
+  function typeOut(rows){
     clearPending();
     tape.innerHTML = '';
     if (!rows.length) {
-      tape.innerHTML = '<li class="idle">Press Arm to begin.</li>';
+      tape.innerHTML = '<li class="none">Nothing yet. Press Arm.</li>';
       return;
     }
     rows.forEach(function(row, i){
@@ -352,26 +346,33 @@
         li.innerHTML = '<span class="at">' + row[0] + '</span><span>' + row[1] + '</span>';
         tape.appendChild(li);
       };
-      // Written line by line, so the order reads as sequence rather than list.
-      if (still.matches) put(); else pending.push(setTimeout(put, i * 190));
+      if (still.matches) put(); else pending.push(setTimeout(put, i * 170));
     });
   }
 
   function play(key, log){
     var s = SCENES[key];
-    document.body.classList.toggle('is-firing', s.firing);
     Object.keys(frames).forEach(function(k){
       frames[k].classList.toggle('shown', k === s.frame);
     });
-    slug.innerHTML = s.slug;
+    eyebrow.textContent = s.eyebrow;
     headline.textContent = s.headline;
     blurb.innerHTML = s.blurb;
-    stateword.textContent = s.state;
+
+    // Struck once, at the moment it happens: the class is removed and re-added
+    // after a reflow so the stamp slams again rather than sitting there already
+    // stamped from a previous run.
+    document.body.classList.remove('struck');
+    if (s.struck) {
+      stamp.querySelector('small').textContent = stampTime();
+      void stamp.offsetWidth;
+      document.body.classList.add('struck');
+    }
 
     acts.innerHTML = '';
     s.acts.forEach(function(a){
       var b = document.createElement('button');
-      b.className = 'act' + (a.quiet ? ' act--quiet' : '');
+      b.className = 'act' + (a.plain ? ' act--plain' : '');
       b.textContent = a.label;
       b.addEventListener('click', function(){
         play(a.to, a.to === 'quiet' ? STOOD_DOWN : null);
@@ -379,7 +380,7 @@
       acts.appendChild(b);
     });
 
-    writeLog(log || s.log);
+    typeOut(log || s.log);
   }
 
   play('quiet');
