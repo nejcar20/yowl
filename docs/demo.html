@@ -1,0 +1,352 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Yowl — see it happen</title>
+<meta name="description" content="Walk through a theft, step by step, in the real Yowl interface. Every screenshot is the actual app, rendered from the shipping code.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ground:#0E141A;
+    --panel:#161F28;
+    --edge:#22303C;
+    --amber:#FFB82A;
+    --quiet:#5FCBBB;
+    --ink:#E9EDF0;
+    --muted:#8394A2;
+    --mono:'IBM Plex Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
+    --display:'Archivo',system-ui,-apple-system,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  body{
+    margin:0;background:var(--ground);color:var(--ink);
+    font-family:var(--display);font-size:17px;line-height:1.6;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:1040px;margin:0 auto;padding:0 24px}
+  a{color:inherit}
+
+  .bar{
+    display:flex;align-items:center;justify-content:space-between;gap:16px;
+    padding:18px 0;border-bottom:1px solid var(--edge);
+    font-family:var(--mono);font-size:13px;letter-spacing:.02em;
+  }
+  .mark{display:flex;align-items:center;gap:10px;font-weight:600}
+  .mark svg{display:block}
+  .bar nav{display:flex;gap:20px}
+  .bar nav a{color:var(--muted);text-decoration:none}
+  .bar nav a:hover,.bar nav a:focus-visible{color:var(--amber)}
+
+  .head{padding:64px 0 8px}
+  .kicker{
+    font-family:var(--mono);font-size:12.5px;letter-spacing:.16em;
+    text-transform:uppercase;color:var(--muted);margin:0 0 22px
+  }
+  h1{
+    font-family:var(--display);font-weight:800;
+    font-size:clamp(2.4rem,6.5vw,4rem);line-height:.98;letter-spacing:-.03em;
+    margin:0 0 22px;max-width:16ch;
+  }
+  h1 .dot{color:var(--amber)}
+  .lede{font-size:clamp(1rem,2vw,1.18rem);color:#C3CDD5;max-width:58ch;margin:0 0 8px}
+
+  /* ---------- the walkthrough ---------- */
+  .stage{
+    display:grid;gap:26px;grid-template-columns:minmax(0,300px) minmax(0,1fr);
+    align-items:start;margin:46px 0 8px;
+  }
+  @media (max-width:760px){ .stage{grid-template-columns:1fr} }
+
+  /* The popover sits on a plate so a white macOS screenshot has something to
+     sit against rather than floating on the dark page. */
+  .plate{
+    border:1px solid var(--edge);border-radius:14px;background:var(--panel);
+    padding:14px;position:sticky;top:20px;
+  }
+  .plate-label{
+    font-family:var(--mono);font-size:11px;letter-spacing:.14em;
+    text-transform:uppercase;color:var(--muted);margin:0 0 12px;
+  }
+  .screens{position:relative;border-radius:10px;overflow:hidden;background:#F2F2F2}
+  .screens img{display:block;width:100%;height:auto}
+  /* Stacked, so the plate keeps the height of the tallest state and the page
+     does not jump as the walkthrough advances. */
+  .screens img+img{position:absolute;inset:0}
+  .screens img{opacity:0;transition:opacity .22s ease}
+  .screens img.on{opacity:1;position:relative}
+  .screens img:not(.on){position:absolute;pointer-events:none}
+
+  .panel h2{
+    font-family:var(--mono);font-size:12.5px;letter-spacing:.16em;
+    text-transform:uppercase;color:var(--muted);font-weight:500;margin:0 0 18px;
+  }
+  .step-title{font-size:1.5rem;font-weight:700;letter-spacing:-.02em;margin:0 0 10px}
+  .step-body{color:#C3CDD5;margin:0 0 22px;max-width:52ch}
+  .step-body b{color:var(--ink);font-weight:600}
+
+  .acts{display:flex;gap:10px;flex-wrap:wrap;margin:0 0 26px}
+  .act{
+    font-family:var(--display);font-size:15px;font-weight:600;color:#141A1F;
+    background:var(--amber);border:1px solid transparent;border-radius:9px;
+    padding:11px 18px;cursor:pointer;transition:background .15s;
+  }
+  .act:hover,.act:focus-visible{background:#FFC855}
+  .act.ghost{background:transparent;border-color:var(--edge);color:var(--ink)}
+  .act.ghost:hover,.act.ghost:focus-visible{border-color:var(--muted);background:#1C2733}
+
+  /* The log is the point: it says what the app did that a screenshot cannot
+     show — audio forced, screen locked, photographs written, push sent. */
+  .log{
+    border:1px solid var(--edge);border-radius:12px;background:var(--panel);
+    font-family:var(--mono);font-size:13px;overflow:hidden;
+  }
+  .log-head{
+    padding:11px 15px;border-bottom:1px solid var(--edge);
+    font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);
+  }
+  .log ol{list-style:none;margin:0;padding:6px 0;min-height:132px}
+  .log li{
+    display:flex;gap:12px;padding:6px 15px;color:#C3CDD5;
+    animation:slip .28s ease both;
+  }
+  .log li .t{color:var(--muted);flex:none;font-variant-numeric:tabular-nums}
+  .log li.hot .t,.log li.hot b{color:var(--amber)}
+  .log li b{font-weight:500;color:var(--ink)}
+  .log .empty{color:var(--muted);padding:10px 15px;display:block}
+  @keyframes slip{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
+
+  /* ---------- settings ---------- */
+  section{padding:56px 0;border-top:1px solid var(--edge);margin-top:46px}
+  h2.sec{
+    font-family:var(--mono);font-size:12.5px;letter-spacing:.16em;
+    text-transform:uppercase;color:var(--muted);font-weight:500;margin:0 0 28px;
+  }
+  .split{display:grid;gap:30px;grid-template-columns:minmax(0,300px) minmax(0,1fr);align-items:start}
+  @media (max-width:760px){ .split{grid-template-columns:1fr} }
+  ul.plain{list-style:none;padding:0;margin:0;display:grid;gap:15px}
+  ul.plain li{display:flex;gap:14px;align-items:flex-start;font-size:16px;color:#C3CDD5}
+  ul.plain b{color:var(--ink);font-weight:600}
+  .bullet{flex:none;width:7px;height:7px;border-radius:50%;background:var(--amber);margin-top:9px}
+
+  .note{
+    border-left:2px solid var(--edge);padding-left:20px;margin-top:34px;
+    color:var(--muted);font-size:14.5px;max-width:60ch;
+  }
+  .note b{color:#C3CDD5;font-weight:500}
+
+  .cta{display:flex;gap:12px;flex-wrap:wrap;margin:34px 0 0}
+  .btn{
+    display:inline-block;text-decoration:none;font-weight:600;font-size:15.5px;
+    padding:13px 22px;border-radius:9px;border:1px solid transparent;transition:.15s;
+  }
+  .btn-primary{background:var(--amber);color:#141A1F}
+  .btn-primary:hover,.btn-primary:focus-visible{background:#FFC855}
+  .btn-ghost{border-color:var(--edge);color:var(--ink)}
+  .btn-ghost:hover,.btn-ghost:focus-visible{border-color:var(--muted)}
+
+  footer{
+    border-top:1px solid var(--edge);padding:32px 0 56px;margin-top:20px;
+    font-family:var(--mono);font-size:13px;color:var(--muted);
+    display:flex;gap:18px;justify-content:space-between;flex-wrap:wrap;
+  }
+  footer a{color:var(--muted)}
+  footer a:hover{color:var(--amber)}
+
+  @media (prefers-reduced-motion:reduce){
+    *{animation:none!important;transition:none!important}
+  }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <div class="bar">
+    <span class="mark">
+      <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true">
+        <path d="M10 1.6 17 4.4v6.1c0 4-2.9 6.9-7 7.9-4.1-1-7-3.9-7-7.9V4.4Z" fill="#FFB82A"/>
+        <circle cx="10" cy="9.4" r="1.5" fill="#0E141A"/>
+        <path d="M12.4 6.8a4 4 0 0 1 0 5.2M14.4 5.2a6.6 6.6 0 0 1 0 8.4" stroke="#0E141A" stroke-width="1.4" fill="none" stroke-linecap="round"/>
+      </svg>
+      Yowl
+    </span>
+    <nav>
+      <a href="./">Home</a>
+      <a href="https://github.com/nejcar20/yowl">Source</a>
+      <a href="https://github.com/nejcar20/yowl/releases/latest">Download</a>
+    </nav>
+  </div>
+
+  <div class="head">
+    <p class="kicker">A walkthrough</p>
+    <h1>See it happen<span class="dot">.</span></h1>
+    <p class="lede">
+      Three steps through a theft, in the real interface. Every screenshot below
+      is the shipping app — rendered straight from the code, not drawn.
+    </p>
+  </div>
+
+  <div class="stage">
+    <div class="plate">
+      <p class="plate-label">Menu bar</p>
+      <div class="screens">
+        <img id="sh-disarmed" class="on" src="img/state-disarmed.png" alt="Yowl in the menu bar, disarmed, with an Arm button">
+        <img id="sh-armed" src="img/state-armed.png" alt="Yowl armed, saying unlock your Mac to disarm">
+        <img id="sh-firing" src="img/state-firing.png" alt="Yowl in alarm, siren sounding, Quit disabled">
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Step <span id="stepno">1</span> of 3</h2>
+      <p class="step-title" id="title">You are about to leave the table</p>
+      <p class="step-body" id="body">
+        Yowl sits in the menu bar with no Dock icon and no window. Nothing is
+        watching until you press <b>Arm</b> — the camera is not running, no
+        permission has been asked for, nothing is being recorded.
+      </p>
+
+      <div class="acts" id="acts"></div>
+
+      <div class="log">
+        <div class="log-head">What the app is doing</div>
+        <ol id="log"><li class="empty">Nothing yet — press Arm.</li></ol>
+      </div>
+    </div>
+  </div>
+
+  <div class="note">
+    <b>This is a walkthrough, not the app.</b> The screenshots are real, and so
+    are the numbers in the log — the volume really is re-forced every second, the
+    photographs really do start ten seconds before the trigger. But a web page
+    cannot take your camera or make your Mac scream, so the sounds and the lock
+    are described rather than performed.
+  </div>
+
+  <section>
+    <h2 class="sec">Everything you can change</h2>
+    <ul class="plain" style="max-width:74ch">
+      <li><span class="bullet"></span><span><b>Every trigger is a checkbox.</b> The charger is on by default. The camera and the lid sensor are opt-in, and the lid one only appears on Macs that have the hinge sensor.</span></li>
+      <li><span class="bullet"></span><span><b>Every response too.</b> Siren, screen lock, photographs, phone alert — each can be switched off, and the app refuses to arm if you switch off everything that could catch a theft.</span></li>
+      <li><span class="bullet"></span><span><b>Test sensitivity</b> shows the live motion score at your own desk, so you can see whether your background defeats the detection before you trust it.</span></li>
+      <li><span class="bullet"></span><span><b>Grace period</b> defaults to none — the siren fires the instant the charger is pulled. Give yourself seconds if you would rather.</span></li>
+      <li><span class="bullet"></span><span><b>Phone alerts</b> pair by scanning a code, with a separate path for iPhone and Android because only Android can open the ntfy app from a scan.</span></li>
+      <li><span class="bullet"></span><span><b>No passcode required.</b> Unlocking your Mac is the disarm. Set one only if you turn the screen lock off.</span></li>
+    </ul>
+    <div class="cta">
+      <a class="btn btn-primary" href="https://github.com/nejcar20/yowl/releases/download/v1.0.0/Yowl-1.0.0.dmg">Download for macOS</a>
+      <a class="btn btn-ghost" href="./">How it tells a thief from a passer-by</a>
+    </div>
+  </section>
+
+  <footer>
+    <span>MIT licensed · <a href="mailto:jernejkocica@gmail.com">jernejkocica@gmail.com</a></span>
+    <span>
+      <a href="https://github.com/nejcar20/yowl">GitHub</a> ·
+      <a href="https://github.com/nejcar20/yowl/issues">Report something</a>
+    </span>
+  </footer>
+</div>
+
+<script>
+(function(){
+  var shots = {
+    disarmed: document.getElementById('sh-disarmed'),
+    armed: document.getElementById('sh-armed'),
+    firing: document.getElementById('sh-firing')
+  };
+  var stepno = document.getElementById('stepno');
+  var title = document.getElementById('title');
+  var body = document.getElementById('body');
+  var acts = document.getElementById('acts');
+  var log = document.getElementById('log');
+
+  // Real numbers from the shipping code: the volume hold interval is 1s
+  // (SirenResponse.volumeHoldInterval) and the run-up buffer is 10s.
+  var STEPS = {
+    disarmed: {
+      n: 1, shot: 'disarmed',
+      title: 'You are about to leave the table',
+      body: 'Yowl sits in the menu bar with no Dock icon and no window. Nothing is watching until you press <b>Arm</b> — the camera is not running, no permission has been asked for, nothing is being recorded.',
+      acts: [{ label: 'Arm it', to: 'armed' }]
+    },
+    armed: {
+      n: 2, shot: 'armed',
+      title: 'Armed, and you walk away',
+      body: 'The charger trigger is listening. Settings are frozen while armed — switching the siren off mid-alarm would be a disarm that never met your password — and <b>Quit is disabled</b>, so the obvious escape is closed.',
+      acts: [
+        { label: 'Someone unplugs the charger', to: 'firing' },
+        { label: 'Come back and unlock', to: 'disarmed', ghost: true }
+      ]
+    },
+    firing: {
+      n: 3, shot: 'firing',
+      title: 'Taken',
+      body: 'Everything below happens at once. The thief is holding a laptop that is screaming, locked, and has already sent your phone a photograph of them.',
+      acts: [{ label: 'Unlock your Mac', to: 'disarmed' }]
+    }
+  };
+
+  var EVENTS = {
+    armed: [
+      ['00.00', 'Charger trigger listening', false],
+      ['00.00', 'Settings frozen, Quit disabled', false]
+    ],
+    firing: [
+      ['00.00', 'Charger unplugged — alarm fires', true],
+      ['00.01', 'Volume forced to 100%, output moved to the built-in speakers', true],
+      ['00.01', 'Siren sounding', true],
+      ['00.02', 'Screen locked', true],
+      ['00.03', 'Photographs written, including the 10s before the trigger', false],
+      ['00.40', 'Push sent to your phone with the photographs', false],
+      ['01.00', 'Volume taken back — and again every second', false]
+    ],
+    disarmed: [
+      ['00.00', 'Mac unlocked — that is the disarm', false],
+      ['00.00', 'Siren stopped, your volume and output restored', false],
+      ['00.00', 'Camera released', false]
+    ]
+  };
+
+  function render(key){
+    var s = STEPS[key];
+    Object.keys(shots).forEach(function(k){
+      shots[k].classList.toggle('on', k === s.shot);
+    });
+    stepno.textContent = s.n;
+    title.textContent = s.title;
+    body.innerHTML = s.body;
+
+    acts.innerHTML = '';
+    s.acts.forEach(function(a){
+      var b = document.createElement('button');
+      b.className = 'act' + (a.ghost ? ' ghost' : '');
+      b.textContent = a.label;
+      b.addEventListener('click', function(){ go(a.to); });
+      acts.appendChild(b);
+    });
+  }
+
+  function go(key){
+    log.innerHTML = '';
+    (EVENTS[key] || []).forEach(function(e, i){
+      var li = document.createElement('li');
+      if (e[2]) li.className = 'hot';
+      li.style.animationDelay = (i * 70) + 'ms';
+      li.innerHTML = '<span class="t">' + e[0] + '</span><b>' + e[1] + '</b>';
+      log.appendChild(li);
+    });
+    if (!log.children.length) {
+      log.innerHTML = '<li class="empty">Nothing yet — press Arm.</li>';
+    }
+    render(key);
+  }
+
+  render('disarmed');
+})();
+</script>
+
+</body>
+</html>
