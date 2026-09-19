@@ -80,13 +80,75 @@ xcrun stapler staple "${APP_DIR}"
 xcrun stapler validate "${APP_DIR}"
 
 step "Packaging disk image"
+# Built read-write first so Finder can be told where the icons go and what sits
+# behind them, then flattened to a compressed read-only image. A plain UDZO
+# gives you two unplaced icons on a white void, which is a poor first thing to
+# show someone who just downloaded a security app.
 rm -f "${DMG}"
-STAGING="$(mktemp -d)"
+STAGING="$(mktemp -d)/${APP_NAME}"
+mkdir -p "${STAGING}/.background"
 cp -R "${APP_DIR}" "${STAGING}/"
 ln -s /Applications "${STAGING}/Applications"
-cp docs/PRIVACY.md "${STAGING}/Privacy.md"
-hdiutil create -volname "${APP_NAME}" -srcfolder "${STAGING}" -ov -format UDZO "${DMG}" >/dev/null
-rm -rf "${STAGING}"
+
+BGBIN="$(mktemp -d)/make-bg"
+swiftc -O Scripts/make-dmg-background.swift -o "${BGBIN}" 2>/dev/null
+"${BGBIN}" "${STAGING}/.background" >/dev/null
+rm -rf "$(dirname "${BGBIN}")"
+
+RW="$(mktemp -d)/rw.dmg"
+hdiutil create -volname "${APP_NAME}" -srcfolder "${STAGING}" -ov \
+    -format UDRW -fs HFS+ "${RW}" >/dev/null
+rm -rf "$(dirname "${STAGING}")"
+
+MOUNT="$(hdiutil attach "${RW}" -nobrowse -noautoopen | tail -1 | \
+    sed 's/.*\(\/Volumes\/.*\)/\1/')"
+# The volume name is read back rather than assumed. A stale /Volumes/Yowl from
+# an earlier mount makes macOS name this one "Yowl 1", and an AppleScript that
+# says `tell disk "Yowl"` then quietly decorates the wrong, read-only volume and
+# reports success -- which is exactly how this shipped an unstyled image once.
+VOLNAME="$(basename "${MOUNT}")"
+
+# Positions match ICON_TOP and the icon columns in make-dmg-background.swift.
+# Finder automation can be refused (it needs permission the first time), and a
+# plain image still installs fine, so this warns rather than failing the build.
+if ! osascript <<APPLESCRIPT >/dev/null 2>&1
+tell application "Finder"
+    tell disk "${VOLNAME}"
+        open
+        set current view of container window to icon view
+        set toolbar visible of container window to false
+        set statusbar visible of container window to false
+        set the bounds of container window to {200, 120, 820, 560}
+        set viewOptions to the icon view options of container window
+        set arrangement of viewOptions to not arranged
+        set icon size of viewOptions to 118
+        set text size of viewOptions to 13
+        set background picture of viewOptions to file ".background:bg.png"
+        set position of item "${APP_NAME}.app" of container window to {165, 248}
+        set position of item "Applications" of container window to {455, 248}
+        close
+        open
+        update without registering applications
+        delay 2
+    end tell
+end tell
+APPLESCRIPT
+then
+    echo "warning: Finder would not arrange the disk image window." >&2
+    echo "         The image still installs; it just looks plain. Grant" >&2
+    echo "         Finder automation in System Settings and re-run." >&2
+fi
+
+sync
+# Finder writes the window layout to .DS_Store. No .DS_Store means the layout
+# did not take, whatever osascript's exit status claimed.
+if [ ! -f "${MOUNT}/.DS_Store" ]; then
+    echo "warning: the disk image window was not styled (no .DS_Store written)." >&2
+    echo "         It installs correctly but opens plain." >&2
+fi
+hdiutil detach "${MOUNT}" -quiet
+hdiutil convert "${RW}" -format UDZO -imagekey zlib-level=9 -ov -o "${DMG}" >/dev/null
+rm -rf "$(dirname "${RW}")"
 codesign --force --sign "${IDENTITY}" "${DMG}"
 echo "created and signed ${DMG}"
 
