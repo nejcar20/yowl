@@ -224,7 +224,17 @@ public struct SettingsSection: View {
                     Text("Closing the lid normally silences the siren: the speakers shut off as the Mac starts to sleep. This installs a small helper that stops the Mac sleeping while the alarm is going, for up to a minute.")
                         .font(.caption2).foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
-                    Text("The helper runs as root — the only part of Yowl that does. It is asked to hold sleep off only while the siren is sounding, and it lets go on its own after 60 seconds, so a laptop shut in a bag always gets to sleep.")
+                    if model.keepsAudibleWithLidClosed {
+                        Picker("Keep it awake for", selection: Binding(
+                            get: { model.lidHoldSeconds },
+                            set: { model.setLidHoldSeconds($0) })) {
+                            ForEach(LidSleepSuppression.holdChoices, id: \.self) { seconds in
+                                Text(LidSleepSuppression.label(forHold: seconds)).tag(seconds)
+                            }
+                        }
+                        .pickerStyle(.menu)
+                    }
+                    Text("It holds sleep off only while the siren is sounding, then lets go on its own — so a laptop shut in a bag always gets to sleep. Longer is not better: every extra minute is another minute it cannot.")
                         .font(.caption2).foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                     // The system's own words, not our guess at them: "refused"

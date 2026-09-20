@@ -14,7 +14,7 @@ public protocol LidSleepSuppressing: AnyObject {
     /// Holds sleep off. Must be renewed before `maximumHold` elapses or it lapses
     /// on its own — a laptop that cannot sleep, shut in a bag with the camera
     /// running, is a fire risk, so the dangerous state is the one that expires.
-    func hold() async -> Bool
+    func hold(seconds: TimeInterval) async -> Bool
     /// Lets the Mac sleep again. Safe to call when nothing is held.
     func release() async
 
@@ -29,12 +29,31 @@ public protocol LidSleepSuppressing: AnyObject {
 }
 
 nonisolated public enum LidSleepSuppression {
-    /// How long a single hold survives without renewal.
-    ///
-    /// A minute. Long enough to be unbearable to stand next to, and the point
-    /// of the alarm is to make a thief put the machine down, not to run for an
-    /// hour. It also halves the window in which a bagged laptop cannot sleep.
+    /// The default, when nobody has chosen: a minute. Long enough to be
+    /// unbearable to stand next to, short enough that a bagged laptop is not
+    /// kept awake for long.
     public static let maximumHold: TimeInterval = 60
+
+    /// What the setting offers. Capped deliberately: every extra minute is
+    /// another minute a laptop shut in a bag cannot sleep, which is a thermal
+    /// problem rather than a preference, so the ceiling is not the user's to
+    /// raise indefinitely.
+    public static let holdChoices: [TimeInterval] = [30, 60, 120, 300]
+
+    public static func label(forHold seconds: TimeInterval) -> String {
+        seconds < 60
+            ? "\(Int(seconds)) seconds"
+            : (seconds == 60 ? "1 minute" : "\(Int(seconds / 60)) minutes")
+    }
+
+    /// Clamps anything stored or passed in to the offered range, so a hand-edited
+    /// preference cannot hold a machine awake for an hour.
+    public static func clampHold(_ seconds: TimeInterval) -> TimeInterval {
+        guard let lowest = holdChoices.first, let highest = holdChoices.last else {
+            return maximumHold
+        }
+        return Swift.min(Swift.max(seconds, lowest), highest)
+    }
 
     /// Kept for the watchdog's own polling; the app does not renew a hold.
     public static let renewInterval: TimeInterval = 20
@@ -125,8 +144,10 @@ public final class FakeLidSleepSuppressor: LidSleepSuppressing {
     public init(isAvailable: Bool = true) { self.isAvailable = isAvailable }
     public var stateDescription: String { isAvailable ? "enabled" : "not registered" }
     public private(set) var holdAttempts = 0
-    public func hold() async -> Bool {
+    public private(set) var lastHoldSeconds: TimeInterval = 0
+    public func hold(seconds: TimeInterval) async -> Bool {
         holdAttempts += 1
+        lastHoldSeconds = seconds
         guard isAvailable else { return false }
         isHeld = true; holdCount += 1; return true
     }

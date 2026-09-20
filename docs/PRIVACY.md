@@ -92,8 +92,9 @@ It exists because a closed lid otherwise silences the siren — the speakers are
 powered down as the Mac begins to sleep, and only preventing that sleep keeps
 them alive.
 
-**It holds for about a minute, once.** The hold is taken when the siren starts
-and is not renewed: a minute is enough to make someone put a laptop down, and an
+**It holds once, for as long as you choose** — 30 seconds, 1, 2 or 5 minutes,
+with one minute the default. The hold is taken when the siren starts and is not
+renewed: a minute is enough to make someone put a laptop down, and an
 alarm that kept a bagged machine awake indefinitely would be a worse problem than
 the one it solves. A detached watchdog releases the setting even if Yowl is force
 quit or the Mac is carried off mid-alarm, and disarming releases it immediately.

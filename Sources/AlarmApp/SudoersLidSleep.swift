@@ -84,8 +84,9 @@ public final class SudoersLidSleepSuppressor: LidSleepSuppressing {
 
     // MARK: - Hold
 
-    public func hold() async -> Bool {
-        let until = Int(Date().timeIntervalSince1970 + LidSleepSuppression.maximumHold)
+    public func hold(seconds: TimeInterval) async -> Bool {
+        let window = LidSleepSuppression.clampHold(seconds)
+        let until = Int(Date().timeIntervalSince1970 + window)
         try? String(until).write(toFile: Self.holdFile, atomically: true, encoding: .utf8)
         guard Self.shell("/usr/bin/sudo",
                          ["-n", "/usr/bin/pmset", "-a", "disablesleep", "1"]) != nil else {

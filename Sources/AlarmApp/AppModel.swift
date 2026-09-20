@@ -136,6 +136,8 @@ public final class AppModel: ObservableObject {
     /// checkbox cannot distinguish "refused" from "waiting for you in
     /// System Settings", and those need different actions from the user.
     @Published public private(set) var lidHelperState = ""
+    /// How long the siren may keep the Mac awake with the lid shut.
+    @Published public private(set) var lidHoldSeconds: TimeInterval = LidSleepSuppression.maximumHold
     /// Whether the siren is actually producing sound, distinct from whether the
     /// alarm is firing: audio-device failures should be visible, not silent.
     @Published public private(set) var isSirenSounding = false
@@ -214,7 +216,9 @@ public final class AppModel: ObservableObject {
         // put the machine down; an alarm that keeps a laptop awake for an hour
         // in a bag is a different and worse problem. The hold expires on its
         // own, and disarming releases it sooner.
-        lidHoldTask = Task { [lidSleep] in _ = await lidSleep.hold() }
+        lidHoldTask = Task { [lidSleep, seconds = lidHoldSeconds] in
+            _ = await lidSleep.hold(seconds: seconds)
+        }
     }
 
     /// Recomputed whenever anything that affects coverage changes.
@@ -396,6 +400,7 @@ public final class AppModel: ObservableObject {
                 self?.engine.resumeAfterWake()
             })
         graceSeconds = preferences.graceSeconds
+        lidHoldSeconds = preferences.lidHoldSeconds
         launchAtLogin = Self.loginItemIsRegistered()
         // Set at init too, not only when the toggle is touched: a relaunch
         // while approval is still pending would otherwise show the toggle on
@@ -516,6 +521,14 @@ public final class AppModel: ObservableObject {
     public func refreshLidHelperState() {
         keepsAudibleWithLidClosed = lidSleep.isAvailable
         lidHelperState = lidSleep.stateDescription
+    }
+
+    public func setLidHoldSeconds(_ seconds: TimeInterval) {
+        guard !settingsLocked else { return }
+        preferences.lidHoldSeconds = seconds
+        // Read back rather than echoed: the store clamps, and the UI must show
+        // what was actually kept.
+        lidHoldSeconds = preferences.lidHoldSeconds
     }
 
     public func setScreenLockEnabled(_ enabled: Bool) {

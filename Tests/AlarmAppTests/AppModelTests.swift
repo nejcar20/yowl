@@ -608,3 +608,26 @@ func theLidHoldIsTakenOnceAndNotRenewed() async throws {
     #expect(model.isFiring)
     #expect(lid.holdCount == 1, "one hold, then let it lapse")
 }
+
+/// The duration is the user's choice; the ceiling is not. A hand-edited
+/// preference must not be able to keep a bagged laptop awake for an hour.
+@Test @MainActor
+func theChosenHoldIsWhatGetsUsedAndIsClamped() async throws {
+    let lid = FakeLidSleepSuppressor(isAvailable: true)
+    let power = FakePowerSourceMonitor(isOnACPower: true)
+    let (model, prefs, _, _) = makeModel(power: power, lid: lid)
+
+    model.setLidHoldSeconds(120)
+    #expect(model.lidHoldSeconds == 120)
+
+    model.setLidHoldSeconds(9999)
+    #expect(model.lidHoldSeconds == 300, "clamped to the ceiling")
+    #expect(prefs.lidHoldSeconds == 300)
+
+    model.setLidHoldSeconds(120)
+    model.arm()
+    power.simulateChange(isOnAC: false)
+    try await Task.sleep(nanoseconds: 300_000_000)
+
+    #expect(lid.lastHoldSeconds == 120, "the alarm must use the chosen duration")
+}

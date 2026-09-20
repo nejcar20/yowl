@@ -41,14 +41,34 @@ import Foundation
 /// that expires, and the safe state is the one that needs no action.
 @Test func aHoldIsBoundedByAMaximum() {
     #expect(LidSleepSuppression.maximumHold == 60)
-    // Renewal has to be comfortably inside the window, or an ordinary
-    // scheduling wobble would drop the siren mid-alarm.
-    #expect(LidSleepSuppression.renewInterval < LidSleepSuppression.maximumHold / 2)
+}
+
+/// The choice is the user's, but the ceiling is not: every extra minute is
+/// another minute a laptop shut in a bag cannot sleep, which is a thermal
+/// question rather than a preference.
+@Test func theHoldChoicesAreBoundedAtBothEnds() {
+    #expect(LidSleepSuppression.holdChoices.first == 30)
+    #expect(LidSleepSuppression.holdChoices.last == 300)
+    #expect(LidSleepSuppression.holdChoices.contains(LidSleepSuppression.maximumHold))
+}
+
+/// Clamped on the way in as well as the way out, so a hand-edited preference
+/// cannot hold a machine awake for an hour.
+@Test func anOutOfRangeHoldIsClamped() {
+    #expect(LidSleepSuppression.clampHold(3600) == 300)
+    #expect(LidSleepSuppression.clampHold(1) == 30)
+    #expect(LidSleepSuppression.clampHold(120) == 120)
+}
+
+@Test func holdDurationsAreLabelledForPeople() {
+    #expect(LidSleepSuppression.label(forHold: 30) == "30 seconds")
+    #expect(LidSleepSuppression.label(forHold: 60) == "1 minute")
+    #expect(LidSleepSuppression.label(forHold: 300) == "5 minutes")
 }
 
 @Test func anUnavailableSuppressorRefusesRatherThanPretending() async {
     let s = FakeLidSleepSuppressor(isAvailable: false)
-    let held = await s.hold()
+    let held = await s.hold(seconds: 60)
     #expect(held == false)
     #expect(s.isHeld == false)
 }

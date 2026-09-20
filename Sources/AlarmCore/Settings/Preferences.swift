@@ -14,6 +14,8 @@ public protocol PreferenceStoring: AnyObject {
     func isEnabled(_ identifier: String, default defaultValue: Bool) -> Bool
     func setEnabled(_ enabled: Bool, for identifier: String)
     var graceSeconds: TimeInterval { get set }
+    /// How long the alarm may hold sleep off with the lid shut.
+    var lidHoldSeconds: TimeInterval { get set }
     var motionThreshold: Double { get set }
 }
 
@@ -91,6 +93,17 @@ public final class UserDefaultsPreferences: PreferenceStoring {
         set { defaults.set(GraceLimits.clamp(newValue), forKey: Key.grace) }
     }
 
+    public var lidHoldSeconds: TimeInterval {
+        get {
+            guard let stored = defaults.object(forKey: "lidHoldSeconds") as? Double
+            else { return LidSleepSuppression.maximumHold }
+            // Clamped on read as well as write: a hand-edited preference must
+            // not be able to keep a bagged laptop awake for an hour.
+            return LidSleepSuppression.clampHold(stored)
+        }
+        set { defaults.set(LidSleepSuppression.clampHold(newValue), forKey: "lidHoldSeconds") }
+    }
+
     public var motionThreshold: Double {
         get {
             guard let stored = defaults.object(forKey: Key.motionThreshold) as? Double
@@ -118,6 +131,12 @@ public final class InMemoryPreferences: PreferenceStoring {
     public var graceSeconds: TimeInterval {
         get { storedGrace }
         set { storedGrace = GraceLimits.clamp(newValue) }
+    }
+
+    private var storedLidHold = LidSleepSuppression.maximumHold
+    public var lidHoldSeconds: TimeInterval {
+        get { storedLidHold }
+        set { storedLidHold = LidSleepSuppression.clampHold(newValue) }
     }
 
     private var storedThreshold = MotionSensitivity.defaultValue

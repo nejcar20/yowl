@@ -142,7 +142,10 @@ Two absolute paths, fixed arguments, scoped to your account, validated with
 `visudo -c` before install and again after. Nothing else is granted, and
 `/etc/sudoers.d/yowl-disablesleep` can be deleted at any time.
 
-The hold is taken once when the siren starts and lasts about a minute. It is
+The hold is taken once when the siren starts and lasts as long as you choose in
+Settings — 30 seconds, 1, 2 or 5 minutes, defaulting to a minute. The ceiling is
+not adjustable: every extra minute is another minute a laptop shut in a bag
+cannot sleep, which is a thermal question rather than a preference. It is
 deliberately not renewed — a minute makes someone put the laptop down, while an
 alarm that kept a bagged machine awake indefinitely would be the more dangerous
 failure. A detached watchdog releases it even if the app is force quit, and
