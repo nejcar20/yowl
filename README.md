@@ -86,7 +86,7 @@ See [PRIVACY.md](docs/PRIVACY.md).
 
 ## Install
 
-**[Download Yowl 1.1.3](https://github.com/nejcar20/yowl/releases/download/v1.1.3/Yowl-1.1.3.dmg)**
+**[Download Yowl 1.2.0](https://github.com/nejcar20/yowl/releases/download/v1.2.0/Yowl-1.2.0.dmg)**
 — 1.2 MB, signed and notarised by Apple, so it opens with a double-click. Drag
 it to Applications.
 
