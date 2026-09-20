@@ -137,7 +137,13 @@
   }
   @media (max-width:760px){ .stamp{right:18px;bottom:16px;font-size:20px} }
 
+  /* The panel is a tall strip, so it takes a column of its own and the list
+     runs beside it rather than under it. */
+  .panel-grid{display:grid;grid-template-columns:238px minmax(0,1fr);gap:34px;align-items:start}
+  @media (max-width:760px){ .panel-grid{grid-template-columns:1fr;gap:26px} }
+  .photo--panel{transform:rotate(-.8deg)}
   .pair{display:grid;grid-template-columns:1fr 1fr;gap:12px 34px;margin:0}
+  .pair--single{grid-template-columns:1fr}
   @media (max-width:700px){ .pair{grid-template-columns:1fr} }
   .pair dt{
     font-family:var(--poster);font-weight:600;text-transform:uppercase;
@@ -231,7 +237,12 @@
     <p class="eyebrow">Also pinned here</p>
     <h1 style="font-size:clamp(1.5rem,3.4vw,2.2rem);max-width:22ch">What you can change</h1>
     <hr class="rule">
-    <dl class="pair">
+    <div class="panel-grid">
+    <figure class="photo photo--panel">
+      <div class="frames"><img class="shown" src="img/settings.png" alt="The Yowl settings panel: responses, saved photographs, grace period, phone alerts with a pairing code, start at login, passcode"></div>
+      <figcaption>the panel, blurred where the private topic is</figcaption>
+    </figure>
+    <dl class="pair pair--single">
       <div><dt>Triggers</dt><dd>Charger on by default. Camera and lid sensor are opt-in; the lid one only appears on Macs that have the hinge sensor.</dd></div>
       <div><dt>Responses</dt><dd>Siren, screen lock, photographs, phone alert — each switches off on its own, and arming is refused if nothing is left that could catch a theft.</dd></div>
       <div><dt>Sensitivity</dt><dd>A live motion score at your own desk, so you can see whether your background defeats the detection before trusting it.</dd></div>
@@ -239,6 +250,7 @@
       <div><dt>Phone alerts</dt><dd>Paired by scanning a code, with different paths for iPhone and Android — only Android can open the ntfy app from a scan.</dd></div>
       <div><dt>Passcode</dt><dd>Not required. Unlocking your Mac is the disarm.</dd></div>
     </dl>
+    </div>
 
     <p class="footnote">
       This page is a walkthrough, not the app. The photographs are the shipping
