@@ -51,6 +51,7 @@ public struct AppDependencies {
     public var screenUnlocks: ScreenUnlockObserving
     public var systemSleep: SystemSleepObserving
     public var sleepDeferrer: SleepDeferring
+    public var lidSleep: LidSleepSuppressing
 
     public init(passcodes: PasscodeStoring,
                 preferences: PreferenceStoring,
@@ -68,7 +69,8 @@ public struct AppDependencies {
                 pasteboard: Pasteboarding,
                 screenUnlocks: ScreenUnlockObserving,
                 systemSleep: SystemSleepObserving,
-                sleepDeferrer: SleepDeferring) {
+                sleepDeferrer: SleepDeferring,
+                lidSleep: LidSleepSuppressing) {
         self.passcodes = passcodes
         self.preferences = preferences
         self.topicStore = topicStore
@@ -86,6 +88,7 @@ public struct AppDependencies {
         self.screenUnlocks = screenUnlocks
         self.systemSleep = systemSleep
         self.sleepDeferrer = sleepDeferrer
+        self.lidSleep = lidSleep
     }
 
     /// The real thing. The only place these concrete types are named.
@@ -107,7 +110,8 @@ public struct AppDependencies {
             pasteboard: SystemPasteboard(),
             screenUnlocks: DistributedScreenUnlockObserver(),
             systemSleep: WorkspaceSleepObserver(),
-            sleepDeferrer: IOKitSleepDeferrer())
+            sleepDeferrer: IOKitSleepDeferrer(),
+            lidSleep: XPCLidSleepSuppressor())
     }
 }
 
@@ -174,10 +178,38 @@ public final class AppModel: ObservableObject {
     private let screenUnlocks: ScreenUnlockObserving
     private let systemSleep: SystemSleepObserving
     private let sleepDeferrer: SleepDeferring
+    private let lidSleep: LidSleepSuppressing
+    private var lidHoldTask: Task<Void, Never>?
     private let lidTrigger: LidAngleTrigger
     /// One list so a per-trigger setting cannot reach some triggers and not others.
     private var allTriggers: [any Trigger] {
         [powerTrigger, motionTrigger, lidTrigger]
+    }
+
+    /// Holds the Mac awake while the siren is going, so a closed lid does not
+    /// silence it, and lets it sleep again the instant the alarm ends.
+    ///
+    /// The hold lapses on its own after a minute, so the renewal loop is what
+    /// keeps it alive — which means a crash, a force quit or a stolen machine
+    /// all end with a Mac that can sleep normally again. Releasing is therefore
+    /// the safe default and holding is the thing that must keep being earned.
+    private func updateLidSleepHold(for newState: AlarmState) {
+        lidHoldTask?.cancel()
+        lidHoldTask = nil
+        guard case .firing = newState, lidSleep.isAvailable else {
+            Task { [lidSleep] in await lidSleep.release() }
+            return
+        }
+        lidHoldTask = Task { [lidSleep] in
+            while !Task.isCancelled {
+                // A refused hold means this Mac cannot do it -- older macOS,
+                // or hardware where `disablesleep` is inert. Stop asking rather
+                // than retrying every 20 seconds for the life of the alarm.
+                guard await lidSleep.hold() else { return }
+                try? await Task.sleep(
+                    nanoseconds: UInt64(LidSleepSuppression.renewInterval * 1_000_000_000))
+            }
+        }
     }
 
     /// Recomputed whenever anything that affects coverage changes.
@@ -242,6 +274,7 @@ public final class AppModel: ObservableObject {
         self.screenUnlocks = dependencies.screenUnlocks
         self.systemSleep = dependencies.systemSleep
         self.sleepDeferrer = dependencies.sleepDeferrer
+        self.lidSleep = dependencies.lidSleep
         let alert = AlertResponse(
             transport: NtfyTransport(topic: topicStore.readTopicValue(),
                                      http: dependencies.http),
@@ -258,6 +291,7 @@ public final class AppModel: ObservableObject {
             self?.state = newState
             self?.updateCountdown(for: newState)
             self?.refreshProtectionWarning()
+            self?.updateLidSleepHold(for: newState)
             // Clear here (not just on the next fire) so a stale "sounding"
             // status cannot survive a disarm.
             guard case .firing = newState else {

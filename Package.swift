@@ -17,6 +17,8 @@ let package = Package(
         // defect this project hit was in AppModel, and none was catchable while
         // it sat in an executable target with no tests.
         .target(name: "AlarmApp", dependencies: ["AlarmCore"], swiftSettings: mainActor),
+        .executableTarget(name: "YowlHelper", dependencies: ["AlarmCore"],
+                          swiftSettings: mainActor),
         .executableTarget(name: "Yowl", dependencies: ["AlarmApp"],
                           swiftSettings: mainActor),
         .testTarget(name: "AlarmCoreTests", dependencies: ["AlarmCore"],

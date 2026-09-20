@@ -18,6 +18,7 @@ private func makeModel(
     power: FakePowerSourceMonitor? = nil,
     sirenPlayer: FakeSirenPlayer = FakeSirenPlayer(),
     defers: FakeSleepDeferrer = FakeSleepDeferrer(),
+    lid: FakeLidSleepSuppressor = FakeLidSleepSuppressor(isAvailable: false),
     passcode: String? = "1234"
 ) -> (AppModel, InMemoryPreferences, InMemoryTopicStore, FakeCamera) {
     let passcodes = InMemoryPasscodeStore()
@@ -39,7 +40,8 @@ private func makeModel(
         pasteboard: pasteboard,
         screenUnlocks: unlocks,
         systemSleep: sleeps,
-        sleepDeferrer: defers))
+        sleepDeferrer: defers,
+        lidSleep: lid))
     return (model, preferences, topicStore, camera)
 }
 
@@ -463,4 +465,64 @@ func sleepIsNoLongerHeldOffOnceDisarmed() async throws {
 
     #expect(model.isFiring == false)
     #expect(defers.wouldDefer() == false)
+}
+
+// MARK: - Keeping the siren alive through a closed lid
+
+/// Measured: with the lid shut the audio hardware powers down at the start of
+/// the sleep transition, so the only fix is for the sleep not to begin. That
+/// needs `pmset disablesleep`, which needs root, which is why this is opt-in
+/// and behind a helper the user has to approve.
+@Test @MainActor
+func aFiringAlarmHoldsSleepOffWhenTheHelperIsInstalled() async throws {
+    let lid = FakeLidSleepSuppressor(isAvailable: true)
+    let power = FakePowerSourceMonitor(isOnACPower: true)
+    let (model, _, _, _) = makeModel(power: power, lid: lid)
+    #expect(lid.isHeld == false)
+
+    model.arm()
+    power.simulateChange(isOnAC: false)
+    try await Task.sleep(nanoseconds: 200_000_000)
+
+    #expect(model.isFiring)
+    #expect(lid.isHeld)
+}
+
+/// The moment the alarm ends it must let the Mac sleep again. Leaving this on
+/// is the failure that matters: a laptop that cannot sleep, shut in a bag with
+/// the camera running, is a fire risk.
+@Test @MainActor
+func sleepIsAllowedAgainAsSoonAsTheAlarmStops() async throws {
+    let lid = FakeLidSleepSuppressor(isAvailable: true)
+    let unlocks = FakeScreenUnlockObserver()
+    let power = FakePowerSourceMonitor(isOnACPower: true)
+    let (model, _, _, _) = makeModel(unlocks: unlocks, power: power, lid: lid)
+    model.arm()
+    power.simulateChange(isOnAC: false)
+    try await Task.sleep(nanoseconds: 200_000_000)
+    #expect(lid.isHeld)
+
+    unlocks.simulateUnlock()
+    try await Task.sleep(nanoseconds: 200_000_000)
+
+    #expect(model.isFiring == false)
+    #expect(lid.isHeld == false)
+    #expect(lid.releaseCount >= 1)
+}
+
+/// With no helper installed the app must behave exactly as the unprivileged
+/// version does — fail closed, never pretend.
+@Test @MainActor
+func withoutTheHelperTheAlarmStillFiresAndNothingIsHeld() async throws {
+    let lid = FakeLidSleepSuppressor(isAvailable: false)
+    let power = FakePowerSourceMonitor(isOnACPower: true)
+    let (model, _, _, _) = makeModel(power: power, lid: lid)
+
+    model.arm()
+    power.simulateChange(isOnAC: false)
+    try await Task.sleep(nanoseconds: 200_000_000)
+
+    #expect(model.isFiring)
+    #expect(lid.isHeld == false)
+    #expect(lid.holdAttempts == 0, "with no helper the app must not even ask")
 }
