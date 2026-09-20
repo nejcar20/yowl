@@ -86,7 +86,7 @@ See [PRIVACY.md](docs/PRIVACY.md).
 
 ## Install
 
-**[Download Yowl 1.0.2](https://github.com/nejcar20/yowl/releases/download/v1.0.2/Yowl-1.0.2.dmg)**
+**[Download Yowl 1.0.3](https://github.com/nejcar20/yowl/releases/download/v1.0.3/Yowl-1.0.3.dmg)**
 — 1.2 MB, signed and notarised by Apple, so it opens with a double-click. Drag
 it to Applications.
 
@@ -125,15 +125,24 @@ there. Everything else works on both.
 
 ## Closing the lid all the way
 
-Sleeps the Mac, and the siren stops with it. No application can prevent this:
-Apple's `IOPMLib.h` states the system "may still sleep for lid close" whatever
-assertion is held, and the `pmset disablesleep` override that once forced it is
-not available on Apple Silicon.
+Sleeps the Mac eventually, and no application can cancel that. Power assertions
+do not help — `IOPMLib.h` says the system "may still sleep for lid close"
+whatever is held — and `pmset disablesleep` does not exist on Apple Silicon.
 
-What the app does instead is fire early — the lid trigger goes at 30° of travel,
-roughly 80° before the lid shuts — so the siren, the screen lock, the
-photographs and the push all happen in the window before sleep. On wake it
-sounds again, which is the moment someone opens the lid.
+What does work is the acknowledgement. An app registered with
+`IORegisterForSystemPower` is asked before the machine sleeps, and Apple's header
+documents the consequence of not answering: "a 30 second timeout (resulting in
+bad user experience)". Bad user experience is the point. While the alarm is
+firing Yowl withholds that acknowledgement, so the siren keeps going for another
+half minute after the lid shuts. Idle sleep arrives as the abortable
+`kIOMessageCanSystemSleep` and is refused outright.
+
+A Mac that is not firing sleeps exactly as it always did — the condition is
+re-read at the moment the system asks, not stored.
+
+The lid trigger still fires at 30° of travel, roughly 80° before the lid shuts,
+so the siren, the lock, the photographs and the push all happen first. On wake it
+sounds again.
 
 ## Why it is not on the Mac App Store
 

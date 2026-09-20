@@ -50,6 +50,7 @@ public struct AppDependencies {
     public var pasteboard: Pasteboarding
     public var screenUnlocks: ScreenUnlockObserving
     public var systemSleep: SystemSleepObserving
+    public var sleepDeferrer: SleepDeferring
 
     public init(passcodes: PasscodeStoring,
                 preferences: PreferenceStoring,
@@ -66,7 +67,8 @@ public struct AppDependencies {
                 clock: AlarmClock,
                 pasteboard: Pasteboarding,
                 screenUnlocks: ScreenUnlockObserving,
-                systemSleep: SystemSleepObserving) {
+                systemSleep: SystemSleepObserving,
+                sleepDeferrer: SleepDeferring) {
         self.passcodes = passcodes
         self.preferences = preferences
         self.topicStore = topicStore
@@ -83,6 +85,7 @@ public struct AppDependencies {
         self.pasteboard = pasteboard
         self.screenUnlocks = screenUnlocks
         self.systemSleep = systemSleep
+        self.sleepDeferrer = sleepDeferrer
     }
 
     /// The real thing. The only place these concrete types are named.
@@ -103,7 +106,8 @@ public struct AppDependencies {
             clock: SystemClock(),
             pasteboard: SystemPasteboard(),
             screenUnlocks: DistributedScreenUnlockObserver(),
-            systemSleep: WorkspaceSleepObserver())
+            systemSleep: WorkspaceSleepObserver(),
+            sleepDeferrer: IOKitSleepDeferrer())
     }
 }
 
@@ -169,6 +173,7 @@ public final class AppModel: ObservableObject {
     private let pasteboard: Pasteboarding
     private let screenUnlocks: ScreenUnlockObserving
     private let systemSleep: SystemSleepObserving
+    private let sleepDeferrer: SleepDeferring
     private let lidTrigger: LidAngleTrigger
     /// One list so a per-trigger setting cannot reach some triggers and not others.
     private var allTriggers: [any Trigger] {
@@ -236,6 +241,7 @@ public final class AppModel: ObservableObject {
         self.pasteboard = dependencies.pasteboard
         self.screenUnlocks = dependencies.screenUnlocks
         self.systemSleep = dependencies.systemSleep
+        self.sleepDeferrer = dependencies.sleepDeferrer
         let alert = AlertResponse(
             transport: NtfyTransport(topic: topicStore.readTopicValue(),
                                      http: dependencies.http),
@@ -337,6 +343,10 @@ public final class AppModel: ObservableObject {
         // Lid-close sleep silences the siren and cannot be prevented. Sounding
         // again on wake is the part that can be: that moment is a thief opening
         // the lid. The engine ignores this unless it is still firing.
+        // Lid-close sleep cannot be cancelled, but withholding the
+        // acknowledgement stalls it for the system's 30-second timeout. Asked
+        // fresh each time, so a Mac that is not firing sleeps as it always did.
+        sleepDeferrer.start { [weak self] in self?.isFiring ?? false }
         systemSleep.startObserving(
             onWillSleep: { [weak self] in
                 guard let self, self.isFiring else { return }

@@ -17,6 +17,7 @@ private func makeModel(
     sleeps: FakeSystemSleepObserver = FakeSystemSleepObserver(),
     power: FakePowerSourceMonitor? = nil,
     sirenPlayer: FakeSirenPlayer = FakeSirenPlayer(),
+    defers: FakeSleepDeferrer = FakeSleepDeferrer(),
     passcode: String? = "1234"
 ) -> (AppModel, InMemoryPreferences, InMemoryTopicStore, FakeCamera) {
     let passcodes = InMemoryPasscodeStore()
@@ -37,7 +38,8 @@ private func makeModel(
         clock: TestClock(),
         pasteboard: pasteboard,
         screenUnlocks: unlocks,
-        systemSleep: sleeps))
+        systemSleep: sleeps,
+        sleepDeferrer: defers))
     return (model, preferences, topicStore, camera)
 }
 
@@ -418,4 +420,47 @@ func wakingAfterDisarmStaysSilent() async throws {
     try await Task.sleep(nanoseconds: 150_000_000)
 
     #expect(player.startCount == startsAfterDisarm)
+}
+
+// MARK: - Holding off the sleep
+
+/// Closing the lid cannot be cancelled, but an app registered for system power
+/// notifications that withholds its acknowledgement stalls the sleep for the
+/// system's 30-second timeout. Half a minute more siren in the hands of whoever
+/// shut the lid is the entire point.
+@Test @MainActor
+func aRunningAlarmHoldsOffTheSleep() async throws {
+    let defers = FakeSleepDeferrer()
+    let power = FakePowerSourceMonitor(isOnACPower: true)
+    let (model, _, _, _) = makeModel(power: power, defers: defers)
+    #expect(defers.isObserving)
+    // Nothing is happening: the Mac must sleep exactly as it always did.
+    #expect(defers.wouldDefer() == false)
+
+    model.arm()
+    power.simulateChange(isOnAC: false)
+    try await Task.sleep(nanoseconds: 150_000_000)
+    #expect(model.isFiring)
+
+    #expect(defers.wouldDefer())
+}
+
+/// And the moment the alarm is over it must stop holding sleep off, or an alarm
+/// app becomes an app that keeps your Mac awake.
+@Test @MainActor
+func sleepIsNoLongerHeldOffOnceDisarmed() async throws {
+    let defers = FakeSleepDeferrer()
+    let unlocks = FakeScreenUnlockObserver()
+    let power = FakePowerSourceMonitor(isOnACPower: true)
+    let (model, _, _, _) = makeModel(unlocks: unlocks, power: power, defers: defers)
+    model.arm()
+    power.simulateChange(isOnAC: false)
+    try await Task.sleep(nanoseconds: 150_000_000)
+    #expect(defers.wouldDefer())
+
+    unlocks.simulateUnlock()
+    try await Task.sleep(nanoseconds: 150_000_000)
+
+    #expect(model.isFiring == false)
+    #expect(defers.wouldDefer() == false)
 }
