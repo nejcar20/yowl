@@ -111,7 +111,7 @@ public struct AppDependencies {
             screenUnlocks: DistributedScreenUnlockObserver(),
             systemSleep: WorkspaceSleepObserver(),
             sleepDeferrer: IOKitSleepDeferrer(),
-            lidSleep: XPCLidSleepSuppressor())
+            lidSleep: SudoersLidSleepSuppressor())
     }
 }
 
@@ -210,16 +210,11 @@ public final class AppModel: ObservableObject {
             Task { [lidSleep] in await lidSleep.release() }
             return
         }
-        lidHoldTask = Task { [lidSleep] in
-            while !Task.isCancelled {
-                // A refused hold means this Mac cannot do it -- older macOS,
-                // or hardware where `disablesleep` is inert. Stop asking rather
-                // than retrying every 20 seconds for the life of the alarm.
-                guard await lidSleep.hold() else { return }
-                try? await Task.sleep(
-                    nanoseconds: UInt64(LidSleepSuppression.renewInterval * 1_000_000_000))
-            }
-        }
+        // Held once, not renewed. A minute of siren is enough to make someone
+        // put the machine down; an alarm that keeps a laptop awake for an hour
+        // in a bag is a different and worse problem. The hold expires on its
+        // own, and disarming releases it sooner.
+        lidHoldTask = Task { [lidSleep] in _ = await lidSleep.hold() }
     }
 
     /// Recomputed whenever anything that affects coverage changes.
@@ -479,31 +474,41 @@ public final class AppModel: ObservableObject {
     /// closed lid otherwise silences the siren: the audio hardware powers down
     /// as the sleep begins, and only `pmset disablesleep` stops the sleep from
     /// beginning. Every other route was measured and does not work.
+    /// Turning this on installs a sudoers rule permitting exactly two pmset
+    /// commands, which needs one administrator prompt. It is the only privileged
+    /// thing the app does, it is off until asked for, and it exists because a
+    /// closed lid otherwise silences the siren: the audio hardware powers down
+    /// as the sleep begins, and only stopping the sleep from beginning helps.
     public func setKeepAudibleWithLidClosed(_ enabled: Bool) {
         guard !settingsLocked else { return }
         // The switch follows the request immediately. Binding it to the system's
         // own status meant a stalled query left it stuck on with no way to turn
         // it off -- the user's intent is not something to go and ask about.
         keepsAudibleWithLidClosed = enabled
-        if enabled {
-            do {
-                try lidSleep.install()
-                lidHelperMessage = "Approve \"Yowl\" in System Settings ▸ General ▸ Login Items & Extensions to finish turning this on."
-            } catch {
-                lidHelperMessage = "Could not register the helper: \(error.localizedDescription)"
-            }
-        } else {
+
+        guard enabled else {
             lidHelperMessage = nil
-            // The refresh has to wait for the uninstall. Reading the state
-            // synchronously re-read "still installed", and the switch snapped
-            // back on -- which is exactly what it looked like from outside.
             Task { [weak self] in
                 try? await self?.lidSleep.uninstall()
                 self?.refreshLidHelperState()
             }
             return
         }
-        refreshLidHelperState()
+
+        // Off the main actor: the administrator prompt cannot draw while the
+        // thread that would present it is blocked waiting for it.
+        lidHelperMessage = "Waiting for your administrator password…"
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                try await self.lidSleep.install()
+                self.lidHelperMessage = nil
+            } catch {
+                self.lidHelperMessage = error.localizedDescription
+                self.keepsAudibleWithLidClosed = false
+            }
+            self.refreshLidHelperState()
+        }
     }
 
     /// Re-read rather than remembered: approval happens in System Settings,

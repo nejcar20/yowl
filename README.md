@@ -125,43 +125,28 @@ there. Everything else works on both.
 
 ## Closing the lid all the way
 
-**The siren cannot be heard with the lid shut, and no software can change that.**
+Closing the lid begins a sleep, and the audio hardware powers down at the start
+of that transition — measured directly: lid shut, Mac held awake by a deferred
+sleep, output device present, volume 1.0, mute cleared four times a second,
+engine running, and silence. Deferring the sleep is not enough. The sleep has to
+not begin.
 
-This was measured rather than reasoned about. A probe ran the real siren with the
-real CoreAudio control and recorded the hardware four times a second across a lid
-close:
+The setting that prevents it is `pmset disablesleep`, which is root-only. So
+**Keep screaming with the lid closed** is off by default, and switching it on
+asks once for an administrator password to install one rule:
 
-- the process was never suspended — the sleep deferral held the Mac awake
-- the output device never changed
-- the volume never left 1.0
-- the mute flag was re-cleared four times a second and never once stuck
-- **and there was no sound**
+    <you> ALL=(root) NOPASSWD: /usr/bin/pmset -a disablesleep 1, \
+                               /usr/bin/pmset -a disablesleep 0
 
-Every software lever was in the right position, and the sound stopped anyway.
+Two absolute paths, fixed arguments, scoped to your account, validated with
+`visudo -c` before install and again after. Nothing else is granted, and
+`/etc/sudoers.d/yowl-disablesleep` can be deleted at any time.
 
-The reason is that deferring a sleep is not the same as preventing one. The
-system begins its sleep transition the moment the lid shuts and powers the audio
-hardware down as part of it — the log shows drivers being sent `SetState to 0`
-during the very window the app is holding the final step off.
-
-A Mac genuinely does play through its internal speakers with the lid closed, but
-only in clamshell mode, where the sleep is never requested at all. Clamshell
-normally needs an external display and mains power, which is not a café table.
-
-The documented way around that requirement is an `AppliesOnLidClose` property on
-a `PreventSystemSleep` assertion — the mechanism apps like Amphetamine use. It
-was tried here and refused with `kIOReturnNotPrivileged` (0xE00002C1) both as a
-normal user and as root, so on this Apple Silicon Mac it is closed off entirely
-rather than merely privileged.
-
-What does work is everything in the seconds before. The lid trigger fires at 30°
-of travel, roughly 80° before the lid shuts, so the siren, the screen lock, the
-photographs and the push all happen first — and the app then holds the sleep off
-for the system's 30-second timeout using `IORegisterForSystemPower`, which is
-what gives the photographs time to upload and the push time to arrive. That part
-is confirmed in the system log:
-
-    Kernel Client Acks   Delays to Sleep notifications: [Yowl timed out(30000 ms)]
+The hold is taken once when the siren starts and lasts about a minute. It is
+deliberately not renewed — a minute makes someone put the laptop down, while an
+alarm that kept a bagged machine awake indefinitely would be the more dangerous
+failure. A detached watchdog releases it even if the app is force quit, and
+disarming releases it at once.
 
 ## Why it is not on the Mac App Store
 

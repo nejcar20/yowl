@@ -74,31 +74,30 @@ Everything is under your control:
 Under GDPR you may contact us about any of the above, though in practice we hold
 nothing to act on.
 
-## The privileged helper
+## Keeping the Mac awake with the lid closed
 
 Off by default. If you switch on **Keep screaming with the lid closed**, Yowl
-registers a helper that runs as root, which macOS asks you to approve in System
-Settings ▸ General ▸ Login Items & Extensions. You can revoke it in the same
-place, or switch the setting off.
+asks once for your administrator password and installs a single rule at
+`/etc/sudoers.d/yowl-disablesleep`:
+
+    <you> ALL=(root) NOPASSWD: /usr/bin/pmset -a disablesleep 1, \
+                               /usr/bin/pmset -a disablesleep 0
+
+That is the entire grant: two absolute paths with fixed arguments, scoped to
+your user account. It permits nothing else, and the file is validated with
+`visudo -c` before it is installed and again afterwards. Untick the setting, or
+delete that file, to revoke it.
 
 It exists because a closed lid otherwise silences the siren — the speakers are
-powered down as the Mac begins to sleep, and only stopping that sleep keeps them
-alive. That setting is root-only.
+powered down as the Mac begins to sleep, and only preventing that sleep keeps
+them alive.
 
-What it does, in full:
+**It holds for about a minute, once.** The hold is taken when the siren starts
+and is not renewed: a minute is enough to make someone put a laptop down, and an
+alarm that kept a bagged machine awake indefinitely would be a worse problem than
+the one it solves. A detached watchdog releases the setting even if Yowl is force
+quit or the Mac is carried off mid-alarm, and disarming releases it immediately.
 
-- runs `pmset -a disablesleep 1` while the alarm is sounding
-- runs `pmset -a disablesleep 0` when the alarm stops, when 60 seconds pass
-  without the alarm asking again, when the helper exits, and when it starts
-- nothing else — it has no entitlements, no network access, and no other commands
-
-It never runs unless the alarm is actually firing. The 60-second limit is not a
-convenience: a laptop that cannot sleep, shut in a bag with the camera running,
-is a fire risk, so holding sleep off must be continually re-earned and releasing
-it is what happens by default.
-
-The source is `Sources/YowlHelper/main.swift`.
-
-## Contact
+## Contact## Contact
 
 jernejkocica@gmail.com

@@ -531,7 +531,7 @@ func withoutTheHelperTheAlarmStillFiresAndNothingIsHeld() async throws {
 /// an app that registers a root daemon on first launch would be a worse thing
 /// than the problem it solves.
 @Test @MainActor
-func theRootHelperIsNotInstalledUntilItIsAskedFor() {
+func theRootHelperIsNotInstalledUntilItIsAskedFor() async throws {
     let lid = FakeLidSleepSuppressor(isAvailable: false)
     let (model, _, _, _) = makeModel(lid: lid)
 
@@ -539,6 +539,8 @@ func theRootHelperIsNotInstalledUntilItIsAskedFor() {
     #expect(lid.installCount == 0)
 
     model.setKeepAudibleWithLidClosed(true)
+    // Installing needs an administrator prompt, so it runs off the main actor.
+    try await Task.sleep(nanoseconds: 200_000_000)
 
     #expect(lid.installCount == 1)
     #expect(model.keepsAudibleWithLidClosed)
@@ -561,13 +563,16 @@ func turningItOffRemovesTheHelper() async throws {
 
 /// A refused registration must say so rather than showing the switch as on.
 @Test @MainActor
-func aRefusedInstallIsReportedAndLeavesItOff() {
+func aRefusedInstallIsReportedAndLeavesItOff() async throws {
     let lid = FakeLidSleepSuppressor(isAvailable: false)
     lid.installFails = true
     let (model, _, _, _) = makeModel(lid: lid)
 
     model.setKeepAudibleWithLidClosed(true)
+    try await Task.sleep(nanoseconds: 200_000_000)
 
+    // A cancelled or refused password prompt must leave the switch off, not
+    // showing a feature that was never granted.
     #expect(model.keepsAudibleWithLidClosed == false)
     #expect(model.lidHelperMessage != nil)
 }
@@ -585,4 +590,21 @@ func untickingActuallyStaysUnticked() async throws {
     try await Task.sleep(nanoseconds: 200_000_000)
 
     #expect(model.keepsAudibleWithLidClosed == false, "the switch must not snap back")
+}
+
+/// A minute is enough to make someone put the laptop down. Renewing the hold
+/// for the life of the alarm would keep a bagged machine awake indefinitely,
+/// which is the more dangerous failure, so the hold is taken once and left to
+/// expire.
+@Test @MainActor
+func theLidHoldIsTakenOnceAndNotRenewed() async throws {
+    let lid = FakeLidSleepSuppressor(isAvailable: true)
+    let power = FakePowerSourceMonitor(isOnACPower: true)
+    let (model, _, _, _) = makeModel(power: power, lid: lid)
+    model.arm()
+    power.simulateChange(isOnAC: false)
+    try await Task.sleep(nanoseconds: 400_000_000)
+
+    #expect(model.isFiring)
+    #expect(lid.holdCount == 1, "one hold, then let it lapse")
 }
