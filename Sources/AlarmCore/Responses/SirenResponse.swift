@@ -67,6 +67,12 @@ public final class SirenResponse: Response {
             // downgraded, because it reports whether the siren started, and
             // re-reporting it from a transient write failure would flap.
             try? self.audio.forceMaxVolumeOnBuiltInSpeakers()
+            // Closing the lid changes the audio configuration and AVAudioEngine
+            // stops itself. The Mac is still awake -- the sleep is held off for
+            // 30 seconds -- but the siren was silent anyway because nothing
+            // noticed. `start()` is a no-op while it really is playing, so this
+            // only acts when the engine has gone.
+            _ = self.player.start()
             self.scheduleVolumeHold()
         }
     }

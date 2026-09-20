@@ -180,3 +180,47 @@ private func makeResponse(volume: Float = 0.3, muted: Bool = true)
     #expect(audio.forceCount == afterReset)
     #expect(audio.state == AudioOutputState(deviceID: 1, volume: 0.3, muted: true))
 }
+
+// MARK: - Surviving an audio route change
+
+/// Closing the lid changes the audio configuration and AVAudioEngine stops
+/// itself. The Mac stays awake -- the sleep is held off for 30 seconds and the
+/// system log confirms it -- but the siren was silent anyway, because nothing
+/// noticed the engine had died. The volume hold already runs every second, so
+/// it is also the thing that puts the siren back.
+@Test func theSirenIsRestartedIfTheEngineDies() async {
+    let clock = TestClock()
+    let player = FakeSirenPlayer()
+    let audio = FakeAudioOutputControl(
+        state: AudioOutputState(deviceID: 1, volume: 0.3, muted: false))
+    let response = SirenResponse(player: player, audio: audio, clock: clock)
+    await response.fire(context: ctx)
+    let startsAtFire = player.startCount
+    #expect(player.isPlaying)
+
+    // The lid shuts: the audio configuration changes under us.
+    player.simulateEngineStopped()
+    #expect(player.isPlaying == false)
+
+    clock.advance(by: SirenResponse.volumeHoldInterval)
+
+    #expect(player.isPlaying)
+    #expect(player.startCount > startsAtFire)
+}
+
+/// It must not keep restarting a siren that was deliberately stopped.
+@Test func aStoppedSirenIsNotRestarted() async {
+    let clock = TestClock()
+    let player = FakeSirenPlayer()
+    let audio = FakeAudioOutputControl(
+        state: AudioOutputState(deviceID: 1, volume: 0.3, muted: false))
+    let response = SirenResponse(player: player, audio: audio, clock: clock)
+    await response.fire(context: ctx)
+    response.restoreAudioAndSilence()
+    let startsAfterStop = player.startCount
+
+    clock.advance(by: SirenResponse.volumeHoldInterval * 5)
+
+    #expect(player.isPlaying == false)
+    #expect(player.startCount == startsAfterStop)
+}

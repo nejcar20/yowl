@@ -50,7 +50,14 @@ public final class AVSirenPlayer: SirenPlaying {
 
     @discardableResult
     public func start() -> Bool {
-        guard !isPlaying else { return true }
+        // `isPlaying` is our own flag; the engine underneath can be stopped by a
+        // configuration change without telling us, which is exactly what closing
+        // the lid does. Trusting the flag reported a sounding siren that was not
+        // making any noise, so the engine itself is the authority.
+        if isPlaying {
+            if engine.isRunning { return true }
+            stop()
+        }
 
         // The oscillator's rate and the connection's declared rate MUST be the
         // same number. They were not: the rate was read from the output device
@@ -177,6 +184,10 @@ public final class FakeSirenPlayer: SirenPlaying {
     public private(set) var startCount = 0
     public private(set) var stopCount = 0
     public var shouldFailStart = false
+
+    /// The audio engine being stopped from underneath the app, which is what a
+    /// configuration change does when the lid closes.
+    public func simulateEngineStopped() { isPlaying = false }
 
     public init() {}
 
