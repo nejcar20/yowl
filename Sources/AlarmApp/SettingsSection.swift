@@ -217,6 +217,24 @@ public struct SettingsSection: View {
 
                 Divider()
 
+                Group {
+                    Toggle("Keep screaming with the lid closed", isOn: Binding(
+                        get: { model.keepsAudibleWithLidClosed },
+                        set: { model.setKeepAudibleWithLidClosed($0) }))
+                    Text("Closing the lid normally silences the siren: the speakers shut off as the Mac starts to sleep. This installs a small helper that stops the Mac sleeping while the alarm is going, for up to a minute.")
+                        .font(.caption2).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text("The helper runs as root — the only part of Yowl that does. It is asked to hold sleep off only while the siren is sounding, and it lets go on its own after 60 seconds, so a laptop shut in a bag always gets to sleep.")
+                        .font(.caption2).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if let note = model.lidHelperMessage {
+                        Text(note).font(.caption2).foregroundStyle(.orange)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+
+                Divider()
+
                 Toggle("Start at login", isOn: Binding(
                     get: { model.launchAtLogin },
                     set: { model.setLaunchAtLogin($0) }))

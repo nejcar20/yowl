@@ -9,12 +9,36 @@ APP_DIR="build/${APP_NAME}.app"
 # BUILD_DIR is asked for rather than assumed: passing --arch moves the output
 # out of .build/release and a stale path would silently bundle the old binary.
 ARCHES=(--arch arm64 --arch x86_64)
+HELPER_NAME="YowlHelper"
+HELPER_LABEL="${BUNDLE_ID}.lidhelper"
 swift build -c release --product "${APP_NAME}" "${ARCHES[@]}"
+swift build -c release --product "${HELPER_NAME}" "${ARCHES[@]}"
 BUILD_DIR="$(swift build -c release "${ARCHES[@]}" --show-bin-path)"
 
 rm -rf "${APP_DIR}"
-mkdir -p "${APP_DIR}/Contents/MacOS" "${APP_DIR}/Contents/Resources"
+mkdir -p "${APP_DIR}/Contents/MacOS" "${APP_DIR}/Contents/Resources" \
+         "${APP_DIR}/Contents/Library/LaunchDaemons"
 cp "${BUILD_DIR}/${APP_NAME}" "${APP_DIR}/Contents/MacOS/${APP_NAME}"
+
+# The privileged helper. Present in every build, registered with launchd only
+# if the user switches the feature on -- an app that ships a root daemon and
+# installs it unasked would be a worse thing than the problem it solves.
+cp "${BUILD_DIR}/${HELPER_NAME}" "${APP_DIR}/Contents/MacOS/${HELPER_NAME}"
+cat > "${APP_DIR}/Contents/Library/LaunchDaemons/${HELPER_LABEL}.plist" <<DAEMON
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key><string>${HELPER_LABEL}</string>
+    <key>BundleProgram</key><string>Contents/MacOS/${HELPER_NAME}</string>
+    <key>MachServices</key>
+    <dict><key>${HELPER_LABEL}</key><true/></dict>
+    <!-- Ties the daemon to this app, so removing the app removes it. -->
+    <key>AssociatedBundleIdentifiers</key>
+    <array><string>${BUNDLE_ID}</string></array>
+</dict>
+</plist>
+DAEMON
 
 # The icon is generated from Scripts/make-icon.swift so it lives in the repo as
 # code rather than as a binary nobody can edit.
@@ -81,11 +105,19 @@ IDENTITY="${YOWL_SIGN_IDENTITY:-$(security find-identity -v -p codesigning \
 # silently takes the ad-hoc branch even when the identity exists.
 IDENTITIES="$(security find-identity -v -p codesigning || true)"
 if printf '%s' "${IDENTITIES}" | grep -qF "${IDENTITY}"; then
+    # The helper is signed first and separately: it is a Mach-O inside the
+    # bundle, not a nested bundle, so signing the app does not cover it, and
+    # launchd refuses to load a daemon whose signature does not check out.
+    # No entitlements -- it needs none, and a root process should ask for
+    # nothing it cannot justify.
+    codesign --force --options runtime --timestamp \
+             --sign "${IDENTITY}" "${APP_DIR}/Contents/MacOS/${HELPER_NAME}"
     codesign --force --options runtime --entitlements "${ENTITLEMENTS}" \
              --sign "${IDENTITY}" "${APP_DIR}"
 else
     echo "warning: signing identity '${IDENTITY}' not found; falling back to ad-hoc." >&2
     echo "         The camera permission will be re-requested on every build." >&2
+    codesign --force --sign - "${APP_DIR}/Contents/MacOS/${HELPER_NAME}"
     codesign --force --sign - "${APP_DIR}"
 fi
 echo "Built ${APP_DIR}"

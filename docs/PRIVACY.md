@@ -74,6 +74,31 @@ Everything is under your control:
 Under GDPR you may contact us about any of the above, though in practice we hold
 nothing to act on.
 
+## The privileged helper
+
+Off by default. If you switch on **Keep screaming with the lid closed**, Yowl
+registers a helper that runs as root, which macOS asks you to approve in System
+Settings ▸ General ▸ Login Items & Extensions. You can revoke it in the same
+place, or switch the setting off.
+
+It exists because a closed lid otherwise silences the siren — the speakers are
+powered down as the Mac begins to sleep, and only stopping that sleep keeps them
+alive. That setting is root-only.
+
+What it does, in full:
+
+- runs `pmset -a disablesleep 1` while the alarm is sounding
+- runs `pmset -a disablesleep 0` when the alarm stops, when 60 seconds pass
+  without the alarm asking again, when the helper exits, and when it starts
+- nothing else — it has no entitlements, no network access, and no other commands
+
+It never runs unless the alarm is actually firing. The 60-second limit is not a
+convenience: a laptop that cannot sleep, shut in a bag with the camera running,
+is a fire risk, so holding sleep off must be continually re-earned and releasing
+it is what happens by default.
+
+The source is `Sources/YowlHelper/main.swift`.
+
 ## Contact
 
 jernejkocica@gmail.com

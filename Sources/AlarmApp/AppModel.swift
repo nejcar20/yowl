@@ -126,6 +126,12 @@ public final class AppModel: ObservableObject {
     /// the authenticating there may be none, and offering an empty passcode
     /// field then is an instruction that cannot be followed.
     @Published public private(set) var hasPasscode = false
+    /// Whether the privileged helper is installed and approved. The system's
+    /// own registration state is the single source of truth — a stored
+    /// preference alongside it would drift the moment someone removed the
+    /// helper in System Settings.
+    @Published public private(set) var keepsAudibleWithLidClosed = false
+    @Published public private(set) var lidHelperMessage: String?
     /// Whether the siren is actually producing sound, distinct from whether the
     /// alarm is firing: audio-device failures should be visible, not silent.
     @Published public private(set) var isSirenSounding = false
@@ -368,6 +374,7 @@ public final class AppModel: ObservableObject {
         sirenEnabled = siren.isActive
         screenLockEnabled = lock.isActive
         refreshPasscodeRequirement()
+        keepsAudibleWithLidClosed = dependencies.lidSleep.isAvailable
         // The owner coming back and unlocking is the disarm. Subscribed for the
         // life of the app rather than only while armed: an unlock that arrives
         // during the window where we are tearing down would otherwise be missed.
@@ -461,6 +468,33 @@ public final class AppModel: ObservableObject {
         preferences.setEnabled(applied, for: siren.identifier)
         sirenEnabled = siren.isActive
         warnIfNoResponsesLeft()
+    }
+
+    /// Turning this on installs a helper that runs as root. It is the only part
+    /// of the app that does, it is off until asked for, and it exists because a
+    /// closed lid otherwise silences the siren: the audio hardware powers down
+    /// as the sleep begins, and only `pmset disablesleep` stops the sleep from
+    /// beginning. Every other route was measured and does not work.
+    public func setKeepAudibleWithLidClosed(_ enabled: Bool) {
+        guard !settingsLocked else { return }
+        if enabled {
+            do {
+                try lidSleep.install()
+                lidHelperMessage = "Approve \"Yowl\" in System Settings ▸ General ▸ Login Items & Extensions to finish turning this on."
+            } catch {
+                lidHelperMessage = "Could not register the helper: \(error.localizedDescription)"
+            }
+        } else {
+            Task { [lidSleep] in try? await lidSleep.uninstall() }
+            lidHelperMessage = nil
+        }
+        refreshLidHelperState()
+    }
+
+    /// Re-read rather than remembered: approval happens in System Settings,
+    /// outside this app, and can be withdrawn there just as easily.
+    public func refreshLidHelperState() {
+        keepsAudibleWithLidClosed = lidSleep.isAvailable
     }
 
     public func setScreenLockEnabled(_ enabled: Bool) {

@@ -17,6 +17,12 @@ public protocol LidSleepSuppressing: AnyObject {
     func hold() async -> Bool
     /// Lets the Mac sleep again. Safe to call when nothing is held.
     func release() async
+
+    /// Registers the privileged helper. macOS then asks the user to approve it
+    /// in System Settings — there is deliberately no way to grant it silently.
+    func install() throws
+    /// Removes it again, releasing any hold first.
+    func uninstall() async throws
 }
 
 nonisolated public enum LidSleepSuppression {
@@ -95,6 +101,13 @@ nonisolated public final class PmsetSleepDisabler: Sendable {
     }
 }
 
+public enum LidHelperError: Error, LocalizedError {
+    case registrationRefused
+    public var errorDescription: String? {
+        "macOS refused to register the helper."
+    }
+}
+
 #if DEBUG
 public final class FakeLidSleepSuppressor: LidSleepSuppressing {
     public var isAvailable: Bool
@@ -109,5 +122,16 @@ public final class FakeLidSleepSuppressor: LidSleepSuppressing {
         isHeld = true; holdCount += 1; return true
     }
     public func release() async { isHeld = false; releaseCount += 1 }
+    public private(set) var installCount = 0
+    public var installFails = false
+    public func install() throws {
+        installCount += 1
+        if installFails { throw LidHelperError.registrationRefused }
+        isAvailable = true
+    }
+    public func uninstall() async throws {
+        await release()
+        isAvailable = false
+    }
 }
 #endif

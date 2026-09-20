@@ -526,3 +526,48 @@ func withoutTheHelperTheAlarmStillFiresAndNothingIsHeld() async throws {
     #expect(lid.isHeld == false)
     #expect(lid.holdAttempts == 0, "with no helper the app must not even ask")
 }
+
+/// The helper must never be installed unless it is asked for. It runs as root;
+/// an app that registers a root daemon on first launch would be a worse thing
+/// than the problem it solves.
+@Test @MainActor
+func theRootHelperIsNotInstalledUntilItIsAskedFor() {
+    let lid = FakeLidSleepSuppressor(isAvailable: false)
+    let (model, _, _, _) = makeModel(lid: lid)
+
+    #expect(model.keepsAudibleWithLidClosed == false)
+    #expect(lid.installCount == 0)
+
+    model.setKeepAudibleWithLidClosed(true)
+
+    #expect(lid.installCount == 1)
+    #expect(model.keepsAudibleWithLidClosed)
+}
+
+/// Switching it off must actually remove it, not merely stop using it.
+@Test @MainActor
+func turningItOffRemovesTheHelper() async throws {
+    let lid = FakeLidSleepSuppressor(isAvailable: true)
+    let (model, _, _, _) = makeModel(lid: lid)
+    #expect(model.keepsAudibleWithLidClosed)
+
+    model.setKeepAudibleWithLidClosed(false)
+    try await Task.sleep(nanoseconds: 150_000_000)
+    model.refreshLidHelperState()
+
+    #expect(lid.isAvailable == false)
+    #expect(model.keepsAudibleWithLidClosed == false)
+}
+
+/// A refused registration must say so rather than showing the switch as on.
+@Test @MainActor
+func aRefusedInstallIsReportedAndLeavesItOff() {
+    let lid = FakeLidSleepSuppressor(isAvailable: false)
+    lid.installFails = true
+    let (model, _, _, _) = makeModel(lid: lid)
+
+    model.setKeepAudibleWithLidClosed(true)
+
+    #expect(model.keepsAudibleWithLidClosed == false)
+    #expect(model.lidHelperMessage != nil)
+}
