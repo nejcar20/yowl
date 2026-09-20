@@ -571,3 +571,18 @@ func aRefusedInstallIsReportedAndLeavesItOff() {
     #expect(model.keepsAudibleWithLidClosed == false)
     #expect(model.lidHelperMessage != nil)
 }
+
+/// Unticking used to snap straight back on: the state was re-read synchronously
+/// while the uninstall was still running, so it read "still installed". The
+/// refresh has to wait for the work it is reporting on.
+@Test @MainActor
+func untickingActuallyStaysUnticked() async throws {
+    let lid = FakeLidSleepSuppressor(isAvailable: true)
+    let (model, _, _, _) = makeModel(lid: lid)
+    #expect(model.keepsAudibleWithLidClosed)
+
+    model.setKeepAudibleWithLidClosed(false)
+    try await Task.sleep(nanoseconds: 200_000_000)
+
+    #expect(model.keepsAudibleWithLidClosed == false, "the switch must not snap back")
+}

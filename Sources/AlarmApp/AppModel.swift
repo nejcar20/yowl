@@ -132,6 +132,10 @@ public final class AppModel: ObservableObject {
     /// helper in System Settings.
     @Published public private(set) var keepsAudibleWithLidClosed = false
     @Published public private(set) var lidHelperMessage: String?
+    /// What macOS says about the helper right now, shown verbatim: a bare
+    /// checkbox cannot distinguish "refused" from "waiting for you in
+    /// System Settings", and those need different actions from the user.
+    @Published public private(set) var lidHelperState = ""
     /// Whether the siren is actually producing sound, distinct from whether the
     /// alarm is firing: audio-device failures should be visible, not silent.
     @Published public private(set) var isSirenSounding = false
@@ -477,6 +481,10 @@ public final class AppModel: ObservableObject {
     /// beginning. Every other route was measured and does not work.
     public func setKeepAudibleWithLidClosed(_ enabled: Bool) {
         guard !settingsLocked else { return }
+        // The switch follows the request immediately. Binding it to the system's
+        // own status meant a stalled query left it stuck on with no way to turn
+        // it off -- the user's intent is not something to go and ask about.
+        keepsAudibleWithLidClosed = enabled
         if enabled {
             do {
                 try lidSleep.install()
@@ -485,8 +493,15 @@ public final class AppModel: ObservableObject {
                 lidHelperMessage = "Could not register the helper: \(error.localizedDescription)"
             }
         } else {
-            Task { [lidSleep] in try? await lidSleep.uninstall() }
             lidHelperMessage = nil
+            // The refresh has to wait for the uninstall. Reading the state
+            // synchronously re-read "still installed", and the switch snapped
+            // back on -- which is exactly what it looked like from outside.
+            Task { [weak self] in
+                try? await self?.lidSleep.uninstall()
+                self?.refreshLidHelperState()
+            }
+            return
         }
         refreshLidHelperState()
     }
@@ -495,6 +510,7 @@ public final class AppModel: ObservableObject {
     /// outside this app, and can be withdrawn there just as easily.
     public func refreshLidHelperState() {
         keepsAudibleWithLidClosed = lidSleep.isAvailable
+        lidHelperState = lidSleep.stateDescription
     }
 
     public func setScreenLockEnabled(_ enabled: Bool) {

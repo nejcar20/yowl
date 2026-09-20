@@ -227,10 +227,17 @@ public struct SettingsSection: View {
                     Text("The helper runs as root — the only part of Yowl that does. It is asked to hold sleep off only while the siren is sounding, and it lets go on its own after 60 seconds, so a laptop shut in a bag always gets to sleep.")
                         .font(.caption2).foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
+                    // The system's own words, not our guess at them: "refused"
+                    // and "waiting for you in System Settings" need different
+                    // actions, and a bare checkbox cannot tell them apart.
+                    Text("Helper: \(model.lidHelperState)")
+                        .font(.caption2).foregroundStyle(.secondary)
                     if let note = model.lidHelperMessage {
                         Text(note).font(.caption2).foregroundStyle(.orange)
                             .fixedSize(horizontal: false, vertical: true)
                     }
+                    Button("Re-check") { model.refreshLidHelperState() }
+                        .font(.caption2)
                 }
 
                 Divider()

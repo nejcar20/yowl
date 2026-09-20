@@ -18,6 +18,9 @@ public protocol LidSleepSuppressing: AnyObject {
     /// Lets the Mac sleep again. Safe to call when nothing is held.
     func release() async
 
+    /// What the system says about the helper, for showing to the user.
+    var stateDescription: String { get }
+
     /// Registers the privileged helper. macOS then asks the user to approve it
     /// in System Settings — there is deliberately no way to grant it silently.
     func install() throws
@@ -115,6 +118,7 @@ public final class FakeLidSleepSuppressor: LidSleepSuppressing {
     public private(set) var holdCount = 0
     public private(set) var releaseCount = 0
     public init(isAvailable: Bool = true) { self.isAvailable = isAvailable }
+    public var stateDescription: String { isAvailable ? "enabled" : "not registered" }
     public private(set) var holdAttempts = 0
     public func hold() async -> Bool {
         holdAttempts += 1

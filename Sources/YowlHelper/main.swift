@@ -1,6 +1,7 @@
 import Foundation
 import os
 import AlarmCore
+import ServiceManagement
 
 // The privileged helper. Runs as root and does exactly one thing: turn the
 // system's SleepDisabled flag on while the alarm is screaming and off again
@@ -74,6 +75,79 @@ atexit { PmsetSleepDisabler().setSleepDisabled(false) }
 // every attempt, and prints whatever pmset writes to stderr -- the first
 // version only checked the exit status, which reported "accepted" for a
 // command that silently did nothing.
+setvbuf(stdout, nil, _IONBF, 0)
+
+if CommandLine.arguments.contains("--holdtest") {
+    setvbuf(stdout, nil, _IONBF, 0)
+    func flag() -> String {
+        let t = Process()
+        t.executableURL = URL(fileURLWithPath: "/usr/bin/pmset")
+        t.arguments = ["-g"]
+        let o = Pipe(); t.standardOutput = o; t.standardError = FileHandle.nullDevice
+        try? t.run()
+        let d = o.fileHandleForReading.readDataToEndOfFile(); t.waitUntilExit()
+        return PmsetSleepDisabler.parseSleepDisabled(
+            from: String(data: d, encoding: .utf8) ?? "") ? "1" : "0"
+    }
+    // Run loop rather than semaphores: the first version of this harness
+    // signalled a semaphore from both the reply and the error handler and
+    // tripped libdispatch's own assertion, which looked like a product crash.
+    func settle(_ seconds: TimeInterval) {
+        RunLoop.current.run(until: Date().addingTimeInterval(seconds))
+    }
+
+    print("SleepDisabled before : \(flag())")
+    let c = NSXPCConnection(machServiceName: YowlLidHelperService.machServiceName,
+                            options: .privileged)
+    c.remoteObjectInterface = NSXPCInterface(with: YowlLidHelper.self)
+    c.invalidationHandler = { print("connection INVALIDATED (daemon unreachable)") }
+    c.interruptionHandler = { print("connection INTERRUPTED (daemon died)") }
+    c.resume()
+
+    let proxy = c.remoteObjectProxyWithErrorHandler { err in
+        print("XPC ERROR: \(err.localizedDescription)")
+    } as? YowlLidHelper
+    guard let proxy else { print("no proxy"); exit(1) }
+
+    proxy.holdSleep { ok in print("holdSleep replied: \(ok)") }
+    settle(3)
+    print("SleepDisabled during : \(flag())")
+
+    proxy.releaseSleep { ok in print("releaseSleep replied: \(ok)") }
+    settle(3)
+    print("SleepDisabled after  : \(flag())")
+    exit(0)
+}
+
+if CommandLine.arguments.contains("--status") {
+    print("bundle       : \(Bundle.main.bundlePath)")
+    print("bundle id    : \(Bundle.main.bundleIdentifier ?? "(none)")")
+    let plist = "com.jernejkocica.yowl.lidhelper.plist"
+    let path = Bundle.main.bundlePath + "/Contents/Library/LaunchDaemons/" + plist
+    print("daemon plist : \(FileManager.default.fileExists(atPath: path) ? "present" : "MISSING") \(path)")
+    let svc = SMAppService.daemon(plistName: plist)
+    let names: [SMAppService.Status: String] = [
+        .notRegistered: "notRegistered", .enabled: "enabled",
+        .requiresApproval: "requiresApproval", .notFound: "notFound"]
+    print("SMAppService : \(names[svc.status] ?? "raw(\(svc.status.rawValue))")")
+    if CommandLine.arguments.contains("--unregister") {
+        let sem = DispatchSemaphore(value: 0)
+        Task {
+            do { try await svc.unregister(); print("unregister   : ok") }
+            catch { print("unregister   : FAILED \(error)") }
+            sem.signal()
+        }
+        _ = sem.wait(timeout: .now() + 15)
+        print("status now   : \(names[svc.status] ?? "raw(\(svc.status.rawValue))")")
+    }
+    if CommandLine.arguments.contains("--register") {
+        do { try svc.register(); print("register     : ok") }
+        catch { print("register     : FAILED \(error)") }
+        print("status now   : \(names[svc.status] ?? "raw(\(svc.status.rawValue))")")
+    }
+    exit(0)
+}
+
 if CommandLine.arguments.contains("--selftest") {
     func run(_ args: [String]) -> (Int32, String, String) {
         let t = Process()
