@@ -14,6 +14,9 @@ private func makeModel(
     pasteboard: FakePasteboard = FakePasteboard(),
     onACPower: Bool = true,
     unlocks: FakeScreenUnlockObserver = FakeScreenUnlockObserver(),
+    sleeps: FakeSystemSleepObserver = FakeSystemSleepObserver(),
+    power: FakePowerSourceMonitor? = nil,
+    sirenPlayer: FakeSirenPlayer = FakeSirenPlayer(),
     passcode: String? = "1234"
 ) -> (AppModel, InMemoryPreferences, InMemoryTopicStore, FakeCamera) {
     let passcodes = InMemoryPasscodeStore()
@@ -24,16 +27,17 @@ private func makeModel(
         topicStore: topicStore,
         camera: camera,
         lidSensor: FakeLidAngleSensor(angle: 110),
-        powerMonitor: FakePowerSourceMonitor(isOnACPower: onACPower),
+        powerMonitor: power ?? FakePowerSourceMonitor(isOnACPower: onACPower),
         audio: FakeAudioOutputControl(state: AudioOutputState(deviceID: 1, volume: 0.3, muted: false)),
-        siren: FakeSirenPlayer(),
+        siren: sirenPlayer,
         screenLocker: FakeScreenLocker(isAvailable: true),
         sleepAssertion: FakeSleepAssertion(),
         evidence: InMemoryEvidenceStore(),
         http: FakeHTTPClient(),
         clock: TestClock(),
         pasteboard: pasteboard,
-        screenUnlocks: unlocks))
+        screenUnlocks: unlocks,
+        systemSleep: sleeps))
     return (model, preferences, topicStore, camera)
 }
 
@@ -365,4 +369,53 @@ func unlockingDoesNotDisarmWhenTheScreenLockIsOff() {
     unlocks.simulateUnlock()
 
     #expect(model.isArmed == true)
+}
+
+// MARK: - Coming back from sleep
+
+/// Closing the lid fully sleeps the Mac and the siren stops with it. Nothing an
+/// app can do about that. What it can do is sound again the moment the machine
+/// wakes -- which is exactly when a thief has opened the lid.
+@Test @MainActor
+func wakingWithTheAlarmStillRunningSoundsItAgain() async throws {
+    let sleeps = FakeSystemSleepObserver()
+    let power = FakePowerSourceMonitor(isOnACPower: true)
+    let player = FakeSirenPlayer()
+    let (model, _, _, _) = makeModel(sleeps: sleeps, power: power, sirenPlayer: player)
+    model.arm()
+    power.simulateChange(isOnAC: false)
+    try await Task.sleep(nanoseconds: 150_000_000)
+    #expect(model.isFiring)
+    #expect(sleeps.isObserving)
+    let startsBeforeSleep = player.startCount
+    #expect(startsBeforeSleep >= 1)
+
+    sleeps.simulateWake()
+    try await Task.sleep(nanoseconds: 150_000_000)
+
+    #expect(player.startCount > startsBeforeSleep)
+}
+
+/// And a wake after an ordinary disarm must stay silent, or opening the lid the
+/// next morning screams at the owner.
+@Test @MainActor
+func wakingAfterDisarmStaysSilent() async throws {
+    let sleeps = FakeSystemSleepObserver()
+    let unlocks = FakeScreenUnlockObserver()
+    let power = FakePowerSourceMonitor(isOnACPower: true)
+    let player = FakeSirenPlayer()
+    let (model, _, _, _) = makeModel(unlocks: unlocks, sleeps: sleeps,
+                                     power: power, sirenPlayer: player)
+    model.arm()
+    power.simulateChange(isOnAC: false)
+    try await Task.sleep(nanoseconds: 150_000_000)
+    // The real disarm: the owner comes back and unlocks the Mac.
+    unlocks.simulateUnlock()
+    try await Task.sleep(nanoseconds: 150_000_000)
+    let startsAfterDisarm = player.startCount
+
+    sleeps.simulateWake()
+    try await Task.sleep(nanoseconds: 150_000_000)
+
+    #expect(player.startCount == startsAfterDisarm)
 }

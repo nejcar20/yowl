@@ -12,29 +12,31 @@ public protocol ScreenUnlockObserving: AnyObject {
 /// This is a notification name, not a private API -- but it is delivered only to
 /// apps outside the sandbox, which is one more reason the Mac App Store build of
 /// this app was never going to work.
-public final class DistributedScreenUnlockObserver: ScreenUnlockObserving {
+public final class DistributedScreenUnlockObserver: NSObject, ScreenUnlockObserving {
     private static let unlocked = Notification.Name("com.apple.screenIsUnlocked")
-    private var token: (any NSObjectProtocol)?
+    private var onUnlock: (() -> Void)?
 
-    public init() {}
+    public override init() { super.init() }
 
+    /// Registered by selector, not with a closure: the closure-based API takes a
+    /// `@Sendable` block, and capturing a main-actor callback in one is a
+    /// data-race warning this package does not suppress.
     public func startObserving(onUnlock: @escaping () -> Void) {
         stop()
-        token = DistributedNotificationCenter.default().addObserver(
-            forName: Self.unlocked, object: nil, queue: .main) { _ in
-                onUnlock()
-            }
+        self.onUnlock = onUnlock
+        DistributedNotificationCenter.default().addObserver(
+            self, selector: #selector(screenUnlocked), name: Self.unlocked, object: nil)
     }
 
     public func stop() {
-        if let token { DistributedNotificationCenter.default().removeObserver(token) }
-        token = nil
+        DistributedNotificationCenter.default().removeObserver(self)
+        onUnlock = nil
     }
 
-    /// The observer outlives no one: removing it in a plain `deinit` would touch
-    /// main-actor state from whatever thread released this. See the package's
-    /// standing rule against `@unchecked Sendable` -- `isolated deinit` is the
-    /// sanctioned way to do this.
+    @objc private func screenUnlocked() { onUnlock?() }
+
+    /// Removing the observer touches main-actor state, so it cannot run on
+    /// whatever thread releases this.
     isolated deinit { stop() }
 }
 

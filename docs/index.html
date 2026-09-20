@@ -206,7 +206,7 @@
       whoever is standing there.
     </p>
     <div class="get">
-      <a class="fill" href="https://github.com/nejcar20/yowl/releases/download/v1.0.0/Yowl-1.0.0.dmg">Download</a>
+      <a class="fill" href="https://github.com/nejcar20/yowl/releases/download/v1.0.1/Yowl-1.0.1.dmg">Download</a>
       <a href="demo.html">See it happen</a>
     </div>
     <p class="req">macOS 14 or later · Universal (Apple Silicon and Intel) · 1.2 MB · signed and notarised by Apple</p>
@@ -270,7 +270,7 @@
       </div>
       <div>
         <dt>The lid is closed<small>opt in · needs the hinge sensor</small></dt>
-        <dd>Reads the hinge angle and fires once the lid has closed 30° — roughly 80° before it shuts, so the siren starts well before the Mac begins sleeping.</dd>
+        <dd>Reads the hinge angle and fires once the lid has closed 30° — roughly 80° before it shuts, so everything happens before the Mac sleeps. Closing it fully does sleep the machine and silence the siren; it sounds again on wake.</dd>
       </div>
     </dl>
 
@@ -315,12 +315,13 @@
     <hr class="rule">
     <div class="limits">
       <p><b>Repetitive backgrounds beat the motion detection.</b> Window blinds, tiled floors, brick — when the background repeats, it genuinely cannot tell a passer-by from the laptop being moved. Open the sensitivity test at your table and wave a hand: if the number jumps, don't rely on it there.</p>
+      <p><b>A fully closed lid puts the Mac to sleep, and the siren stops.</b> No app can prevent that: Apple's own documentation says the system "may still sleep for lid close" whatever you assert, and the override that used to force it does not exist on Apple Silicon. What happens instead is that the alarm fires around 80° before the lid shuts — so the siren, the screen lock, the photographs and the push to your phone all happen first — and it sounds again the moment the Mac wakes, which is when someone opens the lid.</p>
       <p><b>⌘Q still stops the alarm.</b> The Quit menu item is disabled while armed, but the keyboard shortcut is not. An app you cannot quit is its own kind of bad, so this is the trade.</p>
       <p><b>It is a deterrent, not recovery.</b> Turn on Find My and FileVault — those are what protect a stolen Mac. This makes taking it loud and public, which is a different job.</p>
       <p><b>Tested on one Mac.</b> The download is universal and should run on Intel MacBooks, but nobody has tried it on one — and the lid trigger needs a hinge sensor Intel Macs do not have, so it stays hidden there. If you run it on anything else, please say how it went.</p>
     </div>
     <div class="get" style="margin-top:30px">
-      <a class="fill" href="https://github.com/nejcar20/yowl/releases/download/v1.0.0/Yowl-1.0.0.dmg">Download</a>
+      <a class="fill" href="https://github.com/nejcar20/yowl/releases/download/v1.0.1/Yowl-1.0.1.dmg">Download</a>
       <a href="https://github.com/nejcar20/yowl">Read the source</a>
     </div>
   </article>

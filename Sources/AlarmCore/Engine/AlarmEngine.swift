@@ -194,6 +194,21 @@ public final class AlarmEngine {
         if case let .firing(id) = next { fireResponses(trigger: id) }
     }
 
+    /// The Mac slept mid-alarm and has come back.
+    ///
+    /// Lid-close sleep cannot be prevented -- Apple's own header says the system
+    /// "may still sleep for lid close" whatever assertion is held, and the pmset
+    /// override that once forced it does not exist on Apple Silicon. So the
+    /// siren stops when the machine sleeps, and the only thing left to get right
+    /// is what happens on the way back: a thief who opens the lid should meet it
+    /// again, and an owner who already disarmed should meet silence.
+    ///
+    /// Safe to call on every wake. The state check is the whole guard.
+    public func resumeAfterWake() {
+        guard case let .firing(trigger) = state else { return }
+        fireResponses(trigger: trigger)
+    }
+
     private func fireResponses(trigger: TriggerID) {
         let context = AlarmContext(trigger: trigger, firedAt: clock.now)
         Task {

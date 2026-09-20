@@ -86,7 +86,7 @@ See [PRIVACY.md](docs/PRIVACY.md).
 
 ## Install
 
-**[Download Yowl 1.0.0](https://github.com/nejcar20/yowl/releases/download/v1.0.0/Yowl-1.0.0.dmg)**
+**[Download Yowl 1.0.1](https://github.com/nejcar20/yowl/releases/download/v1.0.1/Yowl-1.0.1.dmg)**
 — 1.2 MB, signed and notarised by Apple, so it opens with a double-click. Drag
 it to Applications.
 
@@ -122,6 +122,18 @@ icon; everything is behind it.
 macOS 14 or later. Universal binary — Apple Silicon and Intel. The lid trigger
 needs the hinge angle sensor, which Intel Macs do not have; it stays hidden
 there. Everything else works on both.
+
+## Closing the lid all the way
+
+Sleeps the Mac, and the siren stops with it. No application can prevent this:
+Apple's `IOPMLib.h` states the system "may still sleep for lid close" whatever
+assertion is held, and the `pmset disablesleep` override that once forced it is
+not available on Apple Silicon.
+
+What the app does instead is fire early — the lid trigger goes at 30° of travel,
+roughly 80° before the lid shuts — so the siren, the screen lock, the
+photographs and the push all happen in the window before sleep. On wake it
+sounds again, which is the moment someone opens the lid.
 
 ## Why it is not on the Mac App Store
 

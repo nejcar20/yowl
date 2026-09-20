@@ -49,6 +49,7 @@ public struct AppDependencies {
     public var clock: AlarmClock
     public var pasteboard: Pasteboarding
     public var screenUnlocks: ScreenUnlockObserving
+    public var systemSleep: SystemSleepObserving
 
     public init(passcodes: PasscodeStoring,
                 preferences: PreferenceStoring,
@@ -64,7 +65,8 @@ public struct AppDependencies {
                 http: HTTPPosting,
                 clock: AlarmClock,
                 pasteboard: Pasteboarding,
-                screenUnlocks: ScreenUnlockObserving) {
+                screenUnlocks: ScreenUnlockObserving,
+                systemSleep: SystemSleepObserving) {
         self.passcodes = passcodes
         self.preferences = preferences
         self.topicStore = topicStore
@@ -80,6 +82,7 @@ public struct AppDependencies {
         self.clock = clock
         self.pasteboard = pasteboard
         self.screenUnlocks = screenUnlocks
+        self.systemSleep = systemSleep
     }
 
     /// The real thing. The only place these concrete types are named.
@@ -99,7 +102,8 @@ public struct AppDependencies {
             http: URLSessionHTTPClient(),
             clock: SystemClock(),
             pasteboard: SystemPasteboard(),
-            screenUnlocks: DistributedScreenUnlockObserver())
+            screenUnlocks: DistributedScreenUnlockObserver(),
+            systemSleep: WorkspaceSleepObserver())
     }
 }
 
@@ -164,6 +168,7 @@ public final class AppModel: ObservableObject {
     private let http: HTTPPosting
     private let pasteboard: Pasteboarding
     private let screenUnlocks: ScreenUnlockObserving
+    private let systemSleep: SystemSleepObserving
     private let lidTrigger: LidAngleTrigger
     /// One list so a per-trigger setting cannot reach some triggers and not others.
     private var allTriggers: [any Trigger] {
@@ -230,6 +235,7 @@ public final class AppModel: ObservableObject {
         self.http = dependencies.http
         self.pasteboard = dependencies.pasteboard
         self.screenUnlocks = dependencies.screenUnlocks
+        self.systemSleep = dependencies.systemSleep
         let alert = AlertResponse(
             transport: NtfyTransport(topic: topicStore.readTopicValue(),
                                      http: dependencies.http),
@@ -328,6 +334,17 @@ public final class AppModel: ObservableObject {
         screenUnlocks.startObserving { [weak self] in
             self?.disarmByScreenUnlock()
         }
+        // Lid-close sleep silences the siren and cannot be prevented. Sounding
+        // again on wake is the part that can be: that moment is a thief opening
+        // the lid. The engine ignores this unless it is still firing.
+        systemSleep.startObserving(
+            onWillSleep: { [weak self] in
+                guard let self, self.isFiring else { return }
+                Task { await self.alertResponse.sendSleepNotice() }
+            },
+            onDidWake: { [weak self] in
+                self?.engine.resumeAfterWake()
+            })
         graceSeconds = preferences.graceSeconds
         launchAtLogin = Self.loginItemIsRegistered()
         // Set at init too, not only when the toggle is touched: a relaunch

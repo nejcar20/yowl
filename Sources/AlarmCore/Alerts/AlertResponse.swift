@@ -56,6 +56,24 @@ public final class AlertResponse: Response {
         }
     }
 
+    /// The Mac is about to sleep with the alarm still running -- almost always a
+    /// lid being shut, which no app can prevent. The siren is about to stop, so
+    /// the owner is told that it stopped because the machine slept, not because
+    /// anyone disarmed it.
+    ///
+    /// Best effort: macOS allows only a moment before sleep, so this may not
+    /// reach the server. Failing silently is correct -- the photographs and the
+    /// trigger message have already gone.
+    public func sendSleepNotice() async {
+        guard isActive else { return }
+        try? await transport.send(AlertPayload(
+            title: "Yowl",
+            body: "The Mac went to sleep — the siren stopped. It sounds again when the lid is opened.",
+            urgency: .normal,
+            occurredAt: Date(),
+            images: []))
+    }
+
     public func fire(context: AlarmContext) async {
         // Nowhere to send is a no-op, not a failure.
         guard transport.isConfigured else { return }
