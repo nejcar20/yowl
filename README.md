@@ -146,7 +146,13 @@ during the very window the app is holding the final step off.
 
 A Mac genuinely does play through its internal speakers with the lid closed, but
 only in clamshell mode, where the sleep is never requested at all. Clamshell
-needs an external display and mains power, which is not a café table.
+normally needs an external display and mains power, which is not a café table.
+
+The documented way around that requirement is an `AppliesOnLidClose` property on
+a `PreventSystemSleep` assertion — the mechanism apps like Amphetamine use. It
+was tried here and refused with `kIOReturnNotPrivileged` (0xE00002C1) both as a
+normal user and as root, so on this Apple Silicon Mac it is closed off entirely
+rather than merely privileged.
 
 What does work is everything in the seconds before. The lid trigger fires at 30°
 of travel, roughly 80° before the lid shuts, so the siren, the screen lock, the
