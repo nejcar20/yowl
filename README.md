@@ -125,24 +125,29 @@ there. Everything else works on both.
 
 ## Closing the lid all the way
 
-Sleeps the Mac eventually, and no application can cancel that. Power assertions
-do not help — `IOPMLib.h` says the system "may still sleep for lid close"
-whatever is held — and `pmset disablesleep` does not exist on Apple Silicon.
+**The siren cannot be heard with the lid shut, and no software can change that.**
 
-What does work is the acknowledgement. An app registered with
-`IORegisterForSystemPower` is asked before the machine sleeps, and Apple's header
-documents the consequence of not answering: "a 30 second timeout (resulting in
-bad user experience)". Bad user experience is the point. While the alarm is
-firing Yowl withholds that acknowledgement, so the siren keeps going for another
-half minute after the lid shuts. Idle sleep arrives as the abortable
-`kIOMessageCanSystemSleep` and is refused outright.
+This was measured rather than reasoned about. A probe ran the real siren with the
+real CoreAudio control and recorded the hardware four times a second across a lid
+close:
 
-A Mac that is not firing sleeps exactly as it always did — the condition is
-re-read at the moment the system asks, not stored.
+- the process was never suspended — the sleep deferral held the Mac awake
+- the output device never changed
+- the volume never left 1.0
+- the mute flag was re-cleared four times a second and never once stuck
+- **and there was no sound**
 
-The lid trigger still fires at 30° of travel, roughly 80° before the lid shuts,
-so the siren, the lock, the photographs and the push all happen first. On wake it
-sounds again.
+Every software lever was in the right position. The speakers fire upward through
+the keyboard deck and the machine stops driving them when the lid is down.
+
+What does work is everything in the seconds before. The lid trigger fires at 30°
+of travel, roughly 80° before the lid shuts, so the siren, the screen lock, the
+photographs and the push all happen first — and the app then holds the sleep off
+for the system's 30-second timeout using `IORegisterForSystemPower`, which is
+what gives the photographs time to upload and the push time to arrive. That part
+is confirmed in the system log:
+
+    Kernel Client Acks   Delays to Sleep notifications: [Yowl timed out(30000 ms)]
 
 ## Why it is not on the Mac App Store
 
