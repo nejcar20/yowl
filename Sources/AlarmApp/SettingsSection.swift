@@ -23,7 +23,7 @@ public struct SettingsSection: View {
     @State private var phone: PairingTarget = .iPhone
 
     public var body: some View {
-        DisclosureGroup("Settings", isExpanded: $expanded) {
+        DisclosureGroup(isExpanded: $expanded) {
             // Fully expanded this content is ~750pt tall, which put the whole
             // popover at 954pt: fine on a large display, clipped on a small one,
             // and Quit is last in the stack so it goes first. A flat 420pt cap
@@ -283,6 +283,16 @@ public struct SettingsSection: View {
             }
             .frame(maxHeight: Self.settingsMaxHeight)
             .scrollIndicators(.visible)
+        } label: {
+            // The word, not just the triangle. A DisclosureGroup built from a
+            // plain string label only hit-tests the chevron on macOS, which
+            // makes a one-word target out of something people aim at.
+            Text("Settings")
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+                .onTapGesture { expanded.toggle() }
+                .accessibilityAddTraits(.isButton)
+                .accessibilityHint(expanded ? "Collapse settings" : "Expand settings")
         }
         .font(.callout)
         // The popover closing or the group collapsing must release the camera:
