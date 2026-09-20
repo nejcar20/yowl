@@ -137,8 +137,16 @@ close:
 - the mute flag was re-cleared four times a second and never once stuck
 - **and there was no sound**
 
-Every software lever was in the right position. The speakers fire upward through
-the keyboard deck and the machine stops driving them when the lid is down.
+Every software lever was in the right position, and the sound stopped anyway.
+
+The reason is that deferring a sleep is not the same as preventing one. The
+system begins its sleep transition the moment the lid shuts and powers the audio
+hardware down as part of it — the log shows drivers being sent `SetState to 0`
+during the very window the app is holding the final step off.
+
+A Mac genuinely does play through its internal speakers with the lid closed, but
+only in clamshell mode, where the sleep is never requested at all. Clamshell
+needs an external display and mains power, which is not a café table.
 
 What does work is everything in the seconds before. The lid trigger fires at 30°
 of travel, roughly 80° before the lid shuts, so the siren, the screen lock, the
