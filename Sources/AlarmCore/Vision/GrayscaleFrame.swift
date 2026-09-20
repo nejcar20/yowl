@@ -3,7 +3,8 @@ import Foundation
 import CoreGraphics
 
 /// One 8-bit grayscale frame. Downscaled before it reaches here: registration
-/// at 320x240 is cheap enough to run at 5 fps without a measurable battery cost.
+/// at 320x240 costs about 10ms a frame, so 15 fps uses roughly a seventh of one
+/// core — less than holding the camera open costs in the first place.
 ///
 /// Explicitly `nonisolated`: frames are built on the camera's capture queue,
 /// not the main actor. The package is main-actor isolated by default, which

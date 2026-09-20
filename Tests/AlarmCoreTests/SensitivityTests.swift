@@ -26,11 +26,11 @@ import Foundation
 // A threshold change must take effect without rebuilding the detector, or the
 // slider would only apply after a relaunch.
 @Test func raisingTheThresholdStopsAMovementFiring() {
-    let detector = EgoMotionDetector(threshold: 0.005, consecutiveFramesRequired: 2)
+    let detector = EgoMotionDetector(threshold: 0.005, hitsRequired: 2, window: 2)
     _ = detector.submit(SyntheticFrames.scene())
     #expect(detector.submit(SyntheticFrames.scene(dx: 3)) == false)
     // A 3px move measures ~0.0094, so it clears 0.005 but not 0.05.
-    let sensitive = EgoMotionDetector(threshold: 0.005, consecutiveFramesRequired: 1)
+    let sensitive = EgoMotionDetector(threshold: 0.005, hitsRequired: 1, window: 1)
     _ = sensitive.submit(SyntheticFrames.scene())
     #expect(sensitive.submit(SyntheticFrames.scene(dx: 3)) == true)
 
@@ -42,7 +42,7 @@ import Foundation
 }
 
 @Test func loweringTheThresholdMakesASmallerMovementFire() {
-    let detector = EgoMotionDetector(threshold: 0.05, consecutiveFramesRequired: 1)
+    let detector = EgoMotionDetector(threshold: 0.05, hitsRequired: 1, window: 1)
     _ = detector.submit(SyntheticFrames.scene())
     #expect(detector.submit(SyntheticFrames.scene(dx: 3)) == false)
 

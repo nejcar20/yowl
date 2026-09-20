@@ -43,7 +43,7 @@ import Foundation
 // residual is averaged over a sliver of the frame. Sensor noise alone was
 // enough to complete a three-frame run and fire the siren.
 @Test func aDarkNoisySceneDoesNotFire() {
-    let detector = EgoMotionDetector(threshold: 0.005, consecutiveFramesRequired: 3)
+    let detector = EgoMotionDetector(threshold: 0.005, hitsRequired: 3, window: 3)
     var fired = false
     for seed in UInt64(1)...10 {
         if detector.submit(SyntheticFrames.flat(seed: seed)) { fired = true }
@@ -75,7 +75,7 @@ import Foundation
 // A grab-and-lift accelerates: the per-frame displacement grows quickly. This is
 // the sequence a shift cap made invisible.
 @Test func aGrabAndLiftSequenceFires() {
-    let detector = EgoMotionDetector(threshold: 0.005, consecutiveFramesRequired: 3)
+    let detector = EgoMotionDetector(threshold: 0.005, hitsRequired: 3, window: 3)
     var fired = false
     var offset: CGFloat = 0
     for delta in [CGFloat(0), 30, 60, 90, 120] {
@@ -87,7 +87,7 @@ import Foundation
 
 // The guards must not break the case the feature exists for.
 @Test func genuineMotionStillFiresWithTheGuardsInPlace() {
-    let detector = EgoMotionDetector(threshold: 0.005, consecutiveFramesRequired: 3)
+    let detector = EgoMotionDetector(threshold: 0.005, hitsRequired: 3, window: 3)
     _ = detector.submit(SyntheticFrames.scene())
     _ = detector.submit(SyntheticFrames.scene(dx: 10))
     _ = detector.submit(SyntheticFrames.scene(dx: 20))
@@ -97,7 +97,7 @@ import Foundation
 // A frame pair that cannot be scored must clear the run, or a stalled sequence
 // can be completed by a single later hit minutes afterwards.
 @Test func anUnscorableFrameClearsTheConsecutiveRun() {
-    let detector = EgoMotionDetector(threshold: 0.005, consecutiveFramesRequired: 3)
+    let detector = EgoMotionDetector(threshold: 0.005, hitsRequired: 3, window: 3)
     _ = detector.submit(SyntheticFrames.scene())
     _ = detector.submit(SyntheticFrames.scene(dx: 10))
     _ = detector.submit(SyntheticFrames.scene(dx: 20))

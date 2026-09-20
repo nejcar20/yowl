@@ -57,13 +57,13 @@ private let detector = { EgoMotionDetector() }
 
 // Single-frame noise must not fire the alarm; K consecutive frames must.
 @Test func oneMovedFrameDoesNotFire() {
-    let d = EgoMotionDetector(threshold: 0.005, consecutiveFramesRequired: 3)
+    let d = EgoMotionDetector(threshold: 0.005, hitsRequired: 3, window: 3)
     #expect(d.submit(SyntheticFrames.scene()) == false)
     #expect(d.submit(SyntheticFrames.scene(dx: 12)) == false)
 }
 
 @Test func threeConsecutiveMovedFramesFire() {
-    let d = EgoMotionDetector(threshold: 0.005, consecutiveFramesRequired: 3)
+    let d = EgoMotionDetector(threshold: 0.005, hitsRequired: 3, window: 3)
     _ = d.submit(SyntheticFrames.scene())
     #expect(d.submit(SyntheticFrames.scene(dx: 12)) == false)
     #expect(d.submit(SyntheticFrames.scene(dx: 24)) == false)
@@ -73,7 +73,7 @@ private let detector = { EgoMotionDetector() }
 // A quiet frame between moves resets the run, or noise would accumulate into
 // a false alarm over minutes.
 @Test func aQuietFrameResetsTheConsecutiveRun() {
-    let d = EgoMotionDetector(threshold: 0.005, consecutiveFramesRequired: 3)
+    let d = EgoMotionDetector(threshold: 0.005, hitsRequired: 3, window: 3)
     _ = d.submit(SyntheticFrames.scene())
     _ = d.submit(SyntheticFrames.scene(dx: 12))
     _ = d.submit(SyntheticFrames.scene(dx: 12))   // no further movement
@@ -82,7 +82,7 @@ private let detector = { EgoMotionDetector() }
 }
 
 @Test func peopleWalkingPastNeverFireHoweverManyFrames() {
-    let d = EgoMotionDetector(threshold: 0.005, consecutiveFramesRequired: 3)
+    let d = EgoMotionDetector(threshold: 0.005, hitsRequired: 3, window: 3)
     var fired = false
     for x in stride(from: CGFloat(0), to: 250, by: 25) {
         if d.submit(SyntheticFrames.scene(occluderAt: x)) { fired = true }
@@ -91,7 +91,7 @@ private let detector = { EgoMotionDetector() }
 }
 
 @Test func resetClearsTheRunAndTheLastScore() {
-    let d = EgoMotionDetector(threshold: 0.005, consecutiveFramesRequired: 2)
+    let d = EgoMotionDetector(threshold: 0.005, hitsRequired: 2, window: 2)
     _ = d.submit(SyntheticFrames.scene())
     _ = d.submit(SyntheticFrames.scene(dx: 12))
     d.reset()

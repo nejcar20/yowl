@@ -51,7 +51,10 @@ public final class EgoMotionDetector {
     /// Settable so the sensitivity slider takes effect without rebuilding the
     /// detector — otherwise it would only apply after a relaunch.
     public var threshold: Double
-    public let consecutiveFramesRequired: Int
+    /// Hits needed, and how many recent frames they may be spread across.
+    /// A window equal to `hitsRequired` is the old strict-consecutive rule.
+    public let hitsRequired: Int
+    public let window: Int
 
     /// A scene with less frame-to-frame variation than this carries no
     /// information to register on — a dark room, or the lid part-closed. Sensor
@@ -60,25 +63,34 @@ public final class EgoMotionDetector {
 
     public private(set) var lastScore: MotionScore?
     private var previous: GrayscaleFrame?
-    private var consecutiveHits = 0
+    /// The last `window` verdicts, oldest first. A ring of booleans rather than
+    /// a counter, because a counter cannot forgive a single dip without also
+    /// forgiving hits minutes apart.
+    private var recent: [Bool] = []
 
     /// Defaults come from measurement, not taste: a clearly-moved laptop scores
-    /// about 0.04, so the threshold belongs near 0.005, and three frames at
-    /// 5 fps is ~600 ms — long enough to reject a single noisy frame, short
-    /// enough that the alarm is not late.
-    public init(threshold: Double = 0.005, consecutiveFramesRequired: Int = 3) {
+    /// about 0.04, so the threshold belongs near 0.005. Three hits within five
+    /// frames at 15 fps is ~200-330 ms — fast enough that the siren starts while
+    /// the machine is still being picked up, and still two independent frames
+    /// away from firing on one noisy reading.
+    ///
+    /// The old rule wanted three *consecutive* hits at 5 fps. A real grab is
+    /// jerky, so one dip below the threshold reset the run and the count started
+    /// over, which is what made it take seconds to notice a theft.
+    public init(threshold: Double = 0.005, hitsRequired: Int = 3, window: Int = 5) {
         self.threshold = threshold
-        self.consecutiveFramesRequired = max(1, consecutiveFramesRequired)
+        self.hitsRequired = max(1, hitsRequired)
+        self.window = max(max(1, hitsRequired), window)
     }
 
     public func reset() {
         previous = nil
-        consecutiveHits = 0
+        recent.removeAll()
         lastScore = nil
     }
 
-    /// Feeds one frame. Returns true when movement has been sustained for
-    /// `consecutiveFramesRequired` frames.
+    /// Feeds one frame. Returns true once `hitsRequired` of the last `window`
+    /// frames scored above the threshold.
     public func submit(_ frame: GrayscaleFrame) -> Bool {
         defer { previous = frame }
         guard let previous else { return false }
@@ -86,15 +98,16 @@ public final class EgoMotionDetector {
             // An unscorable pair is not evidence of movement. Leaving the run
             // intact lets a stalled sequence be completed by a single hit
             // minutes later.
-            consecutiveHits = 0
+            recent.removeAll()
             // Clear the readout too: a stale number displayed live reads as a
             // current measurement.
             lastScore = nil
             return false
         }
         lastScore = score
-        consecutiveHits = score.value > threshold ? consecutiveHits + 1 : 0
-        return consecutiveHits >= consecutiveFramesRequired
+        recent.append(score.value > threshold)
+        if recent.count > window { recent.removeFirst(recent.count - window) }
+        return recent.lazy.filter { $0 }.count >= hitsRequired
     }
 
     public func score(previous: GrayscaleFrame, current: GrayscaleFrame) -> MotionScore? {

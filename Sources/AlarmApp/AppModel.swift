@@ -91,7 +91,7 @@ public struct AppDependencies {
             passcodes: KeychainPasscodeStore(),
             preferences: UserDefaultsPreferences(),
             topicStore: KeychainTopicStore(),
-            camera: CameraFrameSource(framesPerSecond: 5),
+            camera: CameraFrameSource(framesPerSecond: 15),
             lidSensor: HIDLidAngleSensor(),
             powerMonitor: IOKitPowerSourceMonitor(),
             audio: CoreAudioOutputControl(),

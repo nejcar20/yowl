@@ -85,7 +85,7 @@ public final class CameraFrameSource: NSObject, FrameSourcing, StillCapturing,
     /// Stays main-actor isolated: only the frame crosses threads, never this.
     private var onFrame: ((GrayscaleFrame) -> Void)?
 
-    public init(framesPerSecond: Double = 5, calibrationFramesPerSecond: Double = 20) {
+    public init(framesPerSecond: Double = 15, calibrationFramesPerSecond: Double = 20) {
         self.minimumInterval = 1.0 / max(1, framesPerSecond)
         self.calibrationInterval = 1.0 / max(1, calibrationFramesPerSecond)
         super.init()

@@ -7,7 +7,7 @@ private func makeTrigger(_ source: FakeFrameSource,
                          required: Int = 3) -> MotionTrigger {
     MotionTrigger(source: source,
                   detector: EgoMotionDetector(threshold: 0.005,
-                                              consecutiveFramesRequired: required),
+                                              hitsRequired: required, window: required),
                   graceSeconds: 0)
 }
 
