@@ -4,6 +4,9 @@ A menu-bar alarm that makes stealing your MacBook loud.
 
 Free and open source (MIT). No accounts, no analytics, no servers.
 
+**[dontstealmylaptop.com](https://dontstealmylaptop.com)** — download, and a
+[walkthrough of what a theft looks like](https://dontstealmylaptop.com/demo.html).
+
 Arm it when you leave your laptop on a café table. If someone unplugs the
 charger, closes the lid, or picks the machine up, it screams at full volume —
 over mute, over headphones — locks the screen, and photographs whoever is

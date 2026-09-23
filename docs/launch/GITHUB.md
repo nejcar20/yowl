@@ -52,5 +52,22 @@ Requires macOS 14 or later.
   Issues.
 - **Releases:** attach the notarised DMG to the v1.0.0 tag.
 - **Pages:** Settings → Pages → Source: `main` branch, `/docs` folder. That
-  serves `docs/index.html` for free at
-  `https://<org>.github.io/<repo>/`.
+  serves `docs/index.html` at `https://<org>.github.io/<repo>/`.
+
+  The site is also on its own domain. `docs/CNAME` holds
+  `dontstealmylaptop.com`, which is what GitHub reads to claim the domain — do
+  not delete it; Pages rewrites the Settings field from that file on every
+  build. On the Cloudflare side the DNS is:
+
+  | Type | Name | Content | Proxy |
+  |---|---|---|---|
+  | `A` | `@` | `185.199.108.153` | DNS only |
+  | `A` | `@` | `185.199.109.153` | DNS only |
+  | `A` | `@` | `185.199.110.153` | DNS only |
+  | `A` | `@` | `185.199.111.153` | DNS only |
+  | `CNAME` | `www` | `<org>.github.io` | DNS only |
+
+  Proxy must be off (grey cloud). Orange-clouded, Cloudflare terminates TLS
+  itself and GitHub never sees the ACME challenge, so "Enforce HTTPS" stays
+  greyed out with a certificate error. Turn the proxy on later if you want it,
+  but only after GitHub has issued the certificate.
