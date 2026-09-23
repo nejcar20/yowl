@@ -1,8 +1,7 @@
 # LinkedIn draft
 
 Post as a text post, link in the body. Tag Luka and ask them to comment rather
-than react — a comment from the other person in the story does more than any
-hashtag. No hashtags.
+than react. No hashtags.
 
 The first two lines are the whole game; LinkedIn folds everything after them
 behind "see more".
@@ -16,17 +15,20 @@ then you run the calculation every laptop owner knows: pack the whole thing up
 for four minutes, or ask a stranger to "keep an eye on it" — a stranger who,
 if someone walked off with it, would do nothing.
 
-So I built the thing we kept wishing existed.
+We had the idea there. Then we did what you do, and checked. Of course it
+already existed — several of them, all paid, and all watching the same two
+things: the charger and the lid.
 
-Yowl is a Mac menu-bar app. You arm it when you get up. If someone unplugs the
-charger, closes the lid or lifts the machine, it screams at full volume — over
-mute, over headphones — locks the screen, and photographs whoever is there.
+So I built ours differently, and gave it away.
 
-The hardest part took weeks: keeping it screaming *after* the lid is shut.
-macOS very much does not want you to do that.
+Yowl is a Mac menu-bar app. You arm it when you get up. Unplug the charger,
+close the lid or lift the machine, and it screams at full volume — over mute,
+over headphones — locks the screen, and photographs whoever is there.
 
-It won't get your laptop back — Find My does that. It makes taking it loud,
-public and photographed, which in a bar is probably the more useful job.
+The difference is the camera. Not for the photo, the others do that too, but as
+the sensor. It asks whether the whole frame shifted at once — which means the
+laptop moved — or whether only part of it changed, which means someone walked
+past. I have not found another Mac app that does this.
 
 Free, MIT, open source.
 
@@ -34,7 +36,12 @@ dontstealmylaptop.com
 
 ---
 
-## Note before posting
+## Notes before posting
 
-The post says the idea was shared and the building was yours. If Luka did more
-than that, fix it before they read it.
+- The post says the idea was shared and the building was yours. If Luka did more
+  than that, fix it before they read it.
+- Do not upgrade "all paid" to "all expensive". They are $10–20; someone will
+  quote the price back at you. Free beats cheap on its own.
+- "I have not found another" is doing real work — keep the hedge. If someone
+  names one in the comments, that is a good comment to get, and thanking them
+  costs nothing.

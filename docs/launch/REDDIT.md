@@ -42,11 +42,22 @@ deletes it. The hold is capped at 60 seconds and enforced by a timestamp on
 disk, so a crash cannot leave your Mac unable to sleep. Leave the feature off and
 the rule is never written — everything else still works.
 
-**The bit I am pleased with.** In a café people walk past constantly, so frame
-differencing is useless. It registers each frame pair and asks whether one
-global transform explains the change: whole scene shifted means the camera
-moved; part of it changed means something moved in front of a still camera.
-There is a sensitivity readout so you can test it at your own table.
+**"Doesn't this already exist?"** Yes. Unplug Alarm, SlapMac, Clyde, MacGuard. I
+found them after having the idea, which is the normal order of these things.
+Most are cheap rather than expensive, so that is not my pitch — free, MIT and
+auditable is.
+
+The actual difference is the camera, and not for the photo; several of them
+photograph the thief too. Yowl can use the camera as the *sensor*. In a café
+people walk past constantly, so frame differencing is useless. It registers each
+frame pair and asks whether one global transform explains the change: whole
+scene shifted means the camera moved, part of it changed means something moved
+in front of a still camera. There is a sensitivity readout so you can test it at
+your own table.
+
+Everything else I found triggers on the charger, the lid, or the accelerometer.
+If there is another one doing camera ego-motion, I would genuinely like to see
+it — I looked and could not find one.
 
 **What it does badly:**
 
