@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<title>Yowl card</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Courier+Prime:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --wall:#3A3B36; --paper:#EDEAE3; --ink:#1A1917; --faded:#6E6A61;
+    --stamp:#B32B20; --tape:rgba(232,223,200,.58);
+    --poster:'Oswald',system-ui,sans-serif;
+    --typed:'Courier Prime',ui-monospace,Menlo,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{width:1200px;height:1200px;overflow:hidden}
+  body{
+    font-family:var(--typed);color:var(--ink);background:var(--wall);
+    background-image:
+      repeating-linear-gradient(94deg, rgba(0,0,0,.05) 0 2px, transparent 2px 7px),
+      repeating-linear-gradient(4deg, rgba(255,255,255,.025) 0 1px, transparent 1px 6px);
+    display:flex;align-items:center;justify-content:center;
+  }
+  .sheet{
+    position:relative;width:1032px;background:var(--paper);
+    padding:76px 68px 58px;transform:rotate(-.55deg);
+    box-shadow:0 1px 0 rgba(255,255,255,.28) inset, 0 26px 58px rgba(0,0,0,.42);
+    background-image:repeating-linear-gradient(0deg, rgba(0,0,0,.016) 0 1px, transparent 1px 3px);
+  }
+  .sheet::before,.sheet::after{
+    content:"";position:absolute;top:-21px;width:186px;height:44px;
+    background:var(--tape);box-shadow:0 2px 5px rgba(0,0,0,.22);
+  }
+  .sheet::before{left:46px;transform:rotate(-2.6deg)}
+  .sheet::after{right:46px;transform:rotate(2.2deg)}
+
+  h1{
+    font-family:var(--poster);font-weight:700;text-transform:uppercase;
+    font-size:122px;line-height:.88;letter-spacing:.004em;max-width:9ch;
+  }
+  /* The headline's second line stops short, leaving the top-right of the
+     notice empty. The stamp goes in that gap rather than over the artwork. */
+  .stamp{
+    position:absolute;right:74px;top:132px;
+    font-family:var(--poster);font-weight:700;text-transform:uppercase;
+    color:var(--stamp);border:6px solid var(--stamp);border-radius:4px;
+    padding:12px 24px 8px;letter-spacing:.08em;font-size:52px;line-height:1.02;
+    text-align:center;transform:rotate(-13deg);opacity:.9;mix-blend-mode:multiply;
+  }
+  .stamp small{display:block;font-size:18px;letter-spacing:.16em;font-weight:400}
+
+  .rule{border:0;border-top:2px solid rgba(26,25,23,.42);margin:40px 0 32px}
+
+  .row{display:flex;gap:46px;align-items:flex-start}
+  .blurb{font-size:26px;line-height:1.66;flex:1}
+  .blurb b{font-weight:700}
+  .panel{width:288px;flex:none;transform:rotate(1.7deg);
+    box-shadow:0 18px 38px rgba(0,0,0,.4);display:block;margin-top:4px}
+
+  .foot{
+    display:flex;align-items:flex-end;justify-content:space-between;
+    margin-top:56px;padding-top:26px;border-top:2px solid rgba(26,25,23,.42);
+  }
+  .mark{font-family:var(--poster);font-weight:600;letter-spacing:.05em;
+    font-size:36px;display:flex;align-items:center;gap:14px}
+  .meta{font-size:19px;color:var(--faded);letter-spacing:.1em;
+    text-transform:uppercase;margin-top:8px}
+  .url{font-family:var(--poster);font-weight:500;font-size:32px;letter-spacing:.02em}
+</style></head>
+<body>
+  <div class="sheet">
+    <h1>Don't steal my laptop</h1>
+    <div class="stamp">Alarm<small>Sounding</small></div>
+    <hr class="rule">
+
+    <div class="row">
+      <p class="blurb">
+        Leave it on the caf&eacute; table. Take it and it screams at full volume
+        &mdash; <b>over mute, over headphones</b> &mdash; locks the screen and
+        photographs whoever is standing there.
+      </p>
+      <img class="panel" src="../img/state-firing.png" alt="">
+    </div>
+
+    <div class="foot">
+      <div>
+        <div class="mark">
+          <svg width="36" height="36" viewBox="0 0 20 20" aria-hidden="true">
+            <path d="M10 1.6 17 4.4v6.1c0 4-2.9 6.9-7 7.9-4.1-1-7-3.9-7-7.9V4.4Z" fill="#B32B20"/>
+            <circle cx="10" cy="9.4" r="1.5" fill="#EDEAE3"/>
+            <path d="M12.4 6.8a4 4 0 0 1 0 5.2M14.4 5.2a6.6 6.6 0 0 1 0 8.4" stroke="#EDEAE3" stroke-width="1.4" fill="none" stroke-linecap="round"/>
+          </svg>
+          YOWL
+        </div>
+        <div class="meta">Free &middot; Open source &middot; MIT &middot; macOS 14+</div>
+      </div>
+      <div class="url">dontstealmylaptop.com</div>
+    </div>
+  </div>
+</body></html>

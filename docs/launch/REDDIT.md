@@ -72,6 +72,7 @@ it — I looked and could not find one.
 protect a stolen Mac. This just makes taking it loud.
 
 Free, MIT, no accounts, no analytics. macOS 14+, signed and notarised.
+Stars and bug reports both welcome — I have only tested it on my own Mac.
 
 https://dontstealmylaptop.com
 
