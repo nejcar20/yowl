@@ -10,25 +10,22 @@ behind "see more".
 
 Luka and I do our best work in bars.
 
-The problem with working in a bar is that eventually you need the bathroom.
-Pack the whole thing up for four minutes, or ask a stranger to "keep an eye on
-it" — a stranger who, if someone walked off with it, would do nothing.
+The problem is that eventually you need the bathroom. Pack up for four minutes,
+or ask a stranger to watch it — a stranger who would do nothing.
 
-We had the idea there, then checked. Of course it already existed. Several of
-them, all paid, all watching the same two things: the charger and the lid.
+We had the idea there, then checked. Of course it existed. Several of them, all
+paid, all watching the same two things: the charger and the lid.
 
 So I built ours differently, and gave it away.
 
-Yowl screams at full volume when someone unplugs the charger, closes the lid or
-lifts your Mac — over mute, over headphones — locks the screen and
-photographs whoever is standing there.
+Yowl screams at full volume when someone unplugs, closes the lid or lifts your
+Mac — over mute, over headphones — then locks the screen and photographs them.
 
 The difference is the camera. Not for the photo; as the sensor. It can tell the
 laptop moving from a person walking past. I have not found another Mac app that
-does that.
+does.
 
-Free, MIT, open source. If it is useful to you, a star on GitHub helps more
-than you would think.
+Free, MIT, open source. A star on GitHub helps.
 
 dontstealmylaptop.com
 
