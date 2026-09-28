@@ -33,14 +33,12 @@ whether one single shift explains the whole picture. Everything moved together
 means the laptop moved. Only part of it changed means somebody walked past. We
 haven't found another Mac app using the camera this way.
 
-The lid nearly beat us. Closing the lid is the actual theft gesture, but macOS
-suspends everything a second or two after it shuts, and on battery that is not
-negotiable. A power assertion does not survive clamshell. AppliesOnLidClose,
-the documented flag for exactly this, gets refused even as root. The only lever
-left is pmset disablesleep, which is root only. So the app writes one narrow
-sudoers rule, two fixed commands and nothing else, and deletes it the moment
-you switch the feature off. That took longer than every other feature put
-together.
+The lid nearly beat us. Closing the lid is the actual theft gesture, but a Mac
+falls asleep a second or two after it shuts, and on battery it really means it.
+Every ordinary way of keeping it awake stops working the moment the lid touches.
+Getting round that took some genuine magic, and longer than every other feature
+put together. It is also the one part of the app that asks your permission
+first.
 
 Download it and try it on your own table. Free, MIT, open source. Suggestions
 and bug reports very welcome, and a star on GitHub helps.
@@ -63,7 +61,8 @@ dontstealmylaptop.com
   novel — Amphetamine keeps a Mac awake the same way — so the claim that holds
   is about alarm apps, and about what you looked for. Do not let it drift into
   "nobody has ever done this".
-- Naming the sudoers rule in the post is deliberate. It is the most invasive
-  thing the app does, the source is public, and saying it first is the whole
-  reason anyone should trust the rest.
+- This post keeps the lid work plain and does not name the sudoers rule. The
+  Reddit draft does name it, in full, which is the right venue for it. The one
+  line kept here, that it asks your permission first, is what stops the admin
+  password arriving as a surprise in the comments. Do not cut that line.
 - The image is generated: edit `card.html` and run `Scripts/make-launch-card.sh`.
