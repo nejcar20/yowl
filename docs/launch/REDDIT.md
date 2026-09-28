@@ -38,9 +38,10 @@ fixed commands and nothing else:
 ```
 
 No wildcards, one user, absolute paths, `visudo -c` validated. Unticking the box
-deletes it. The hold is capped at 60 seconds and enforced by a timestamp on
-disk, so a crash cannot leave your Mac unable to sleep. Leave the feature off and
-the rule is never written — everything else still works.
+deletes it. The hold is capped — one minute by default, five at the most — and
+enforced by a timestamp on disk that a detached watchdog polls, so force quitting
+the app or carrying the machine off mid-alarm still lets it sleep. Leave the
+feature off and the rule is never written; everything else still works.
 
 **"Doesn't this already exist?"** Yes. Unplug Alarm, SlapMac, Clyde, MacGuard. I
 found them after having the idea, which is the normal order of these things.
@@ -77,6 +78,61 @@ Stars and bug reports both welcome — I have only tested it on my own Mac.
 https://dontstealmylaptop.com
 
 Happy to answer anything about the lid problem or the detection.
+
+---
+
+# Variant for r/swift
+
+Same link, different room. r/swift wants the engineering, not the product, so
+this one leads with the failures and never pitches. Post it days after the
+r/macapps one, not the same day.
+
+**Title:** Four ways to keep a Mac awake with the lid shut, three of which do
+not work
+
+---
+
+I wanted an alarm that keeps screaming after a thief closes the lid. That turned
+out to be the whole project. Notes, in case someone else goes looking.
+
+**Power assertions.** `IOPMAssertionCreateWithName` with the no-idle-sleep
+assertions is the obvious first move and it is the wrong tool. Those prevent
+*idle* sleep. Clamshell sleep is a separate path and goes straight past them.
+
+**Deferring the sleep notification.** `IORegisterForSystemPower` lets you hold a
+pending sleep for roughly 30 seconds. It buys time, it does not keep audio
+running, so for an alarm it buys silence with a delay on it.
+
+**`AppliesOnLidClose`.** Documented, seemingly exactly the case. Refused as a
+normal user, still refused as root. `IOPMSetSystemPowerSetting` is not in the
+public SDK.
+
+**An `SMAppService` daemon over XPC.** The sanctioned way to do privileged work.
+Registered cleanly, reported itself `enabled`, signed and notarised, and launchd
+never started it, so every call failed. `unregister()` did not take either. I
+deleted it rather than ship dead privileged machinery in the bundle.
+
+**What works** is `pmset -a disablesleep 1`, root only, which is what Amphetamine
+uses. So: one sudoers rule, two absolute paths with fixed arguments, `visudo -c`
+validated before and after.
+
+Three things cost me more time than the above:
+
+1. `pmset` exits 0 for settings it ignores. Trusting the exit status ships a
+   feature that reports success on hardware where it silently does nothing. Write
+   the value, then read the flag back, and only believe the read.
+2. `osascript ... with administrator privileges` run synchronously on the main
+   actor never shows its dialog. The UI is blocked waiting for the prompt it
+   needs to present. It looks exactly like a permissions failure.
+3. A crashed app must not leave a Mac unable to sleep. The hold is a timestamp
+   file plus a detached shell that outlives the process and releases when it goes
+   stale.
+
+Swift 6.3, strict concurrency, `.defaultIsolation(MainActor.self)` package-wide,
+and a self-imposed rule of no `@unchecked Sendable` and no `nonisolated(unsafe)`
+anywhere. Source is MIT if the lid handling is useful to anyone.
+
+https://dontstealmylaptop.com
 
 ---
 
