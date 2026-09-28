@@ -35,10 +35,10 @@ haven't found another Mac app using the camera this way.
 
 The lid nearly beat us. Closing the lid is the actual theft gesture, but a Mac
 falls asleep a second or two after it shuts, and on battery it really means it.
-Every ordinary way of keeping it awake stops working the moment the lid touches.
-Getting round that took some genuine magic, and longer than every other feature
-put together. It is also the one part of the app that asks your permission
-first.
+We tried four of the obvious ways to keep it awake. None of them work once the
+lid is shut. The fifth one does, and finding it took longer than every other
+feature put together. It is also the one part of the app that asks your
+permission first.
 
 Download it and try it on your own table. Free, MIT, open source. Suggestions
 and bug reports very welcome, and a star on GitHub helps.
