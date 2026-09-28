@@ -20,28 +20,22 @@ We had the idea there and then went looking, and of course it already existed.
 A few of them. All paid, and all watching the same two things: the charger and
 the lid.
 
-So we built ours differently and gave it away.
-
 Yowl screams at full volume when someone unplugs your Mac, closes the lid or
 picks it up. Over mute, over headphones. Then it locks the screen, photographs
-whoever is standing there, and pushes that photo to your phone over ntfy. So
-you find out while it is still happening, not when you get back to the table.
+whoever is standing there, and sends that photo to your phone, so you find out
+while it is still happening.
 
-The camera is doing something unusual here. It is a sensor, not just a way to
-get the photo. Each frame gets registered against the last, and the question is
-whether one single shift explains the whole picture. Everything moved together
-means the laptop moved. Only part of it changed means somebody walked past. We
-haven't found another Mac app using the camera this way.
+The camera is the unusual bit. It is a sensor here, not just a way to get the
+photo, so it can tell the laptop moving from somebody walking past. We haven't
+found another Mac app using it that way.
 
-The lid nearly beat us. Closing the lid is the actual theft gesture, but a Mac
-falls asleep a second or two after it shuts, and on battery it really means it.
-We tried four of the obvious ways to keep it awake. None of them work once the
-lid is shut. The fifth one does, and finding it took longer than every other
-feature put together. It is also the one part of the app that asks your
-permission first.
+The lid nearly beat us. A Mac falls asleep a second or two after it shuts, and
+on battery it really means it. We tried four of the obvious ways to keep it
+awake. None work. The fifth does, and finding it took longer than every other
+feature put together. It is also the only part that asks your permission.
 
-Download it and try it on your own table. Free, MIT, open source. Suggestions
-and bug reports very welcome, and a star on GitHub helps.
+Try it on your own table. Free, MIT, open source. Suggestions and bug reports
+very welcome, and a star on GitHub helps.
 
 dontstealmylaptop.com
 
@@ -63,6 +57,6 @@ dontstealmylaptop.com
   "nobody has ever done this".
 - This post keeps the lid work plain and does not name the sudoers rule. The
   Reddit draft does name it, in full, which is the right venue for it. The one
-  line kept here, that it asks your permission first, is what stops the admin
-  password arriving as a surprise in the comments. Do not cut that line.
+  line kept here, that it asks your permission, is what stops the admin password
+  arriving as a surprise in the comments. Do not cut that line.
 - The image is generated: edit `card.html` and run `Scripts/make-launch-card.sh`.
