@@ -26,14 +26,27 @@ Yowl screams at full volume when someone unplugs your Mac, closes the lid or
 picks it up. Over mute, over headphones. Then it locks the screen and takes a
 photo of whoever is standing there.
 
-Two bits took the real work. The camera is a sensor here, not just a way to get
-the photo, so it can tell the laptop moving from someone walking past it. And
-it keeps screaming after the lid is shut. macOS puts a closed laptop to sleep
-within seconds, and on battery it really means it, so a lid alarm normally goes
-quiet at the exact moment the theft starts. I haven't found another Mac app
-doing either.
+The camera is doing something unusual here. It is a sensor, not just a way to
+get the photo. Every frame pair gets registered against the last, and the
+question it asks is whether one single shift explains the whole picture. If
+everything moved together, the camera moved, so the laptop moved. If only part
+of it changed, somebody walked past a laptop that is sitting still. That is the
+difference between an alarm you can use in a busy cafe and one you switch off
+after ten minutes. I haven't found another Mac app that uses the camera this
+way.
 
-Free, MIT, open source. A star on GitHub helps.
+The lid nearly beat me though. Closing the lid is the actual theft gesture, but
+macOS suspends more or less everything a second or two after it shuts, and on
+battery that is not negotiable. A power assertion does not survive clamshell.
+The documented flag for exactly this case, AppliesOnLidClose, gets refused even
+when you ask as root. The only lever left is pmset disablesleep, which is root
+only. So the app writes one narrowly scoped sudoers rule that allows two fixed
+commands and nothing else, holds the Mac awake for a capped 60 seconds, and
+deletes the rule the moment you switch the feature off. That single problem
+took longer than every other feature put together.
+
+Download it and try it on your own table. Free, MIT, open source. Suggestions
+and bug reports very welcome, and a star on GitHub helps.
 
 dontstealmylaptop.com
 
@@ -52,4 +65,7 @@ dontstealmylaptop.com
   novel — Amphetamine keeps a Mac awake the same way — so the claim that holds
   is about alarm apps, and about what you looked for. Do not let it drift into
   "nobody has ever done this".
+- Naming the sudoers rule in the post is deliberate. It is the most invasive
+  thing the app does, the source is public, and saying it first is the whole
+  reason anyone should trust the rest.
 - The image is generated: edit `card.html` and run `Scripts/make-launch-card.sh`.
