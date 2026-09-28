@@ -23,8 +23,9 @@ the lid.
 So we built ours differently and gave it away.
 
 Yowl screams at full volume when someone unplugs your Mac, closes the lid or
-picks it up. Over mute, over headphones. Then it locks the screen and takes a
-photo of whoever is standing there.
+picks it up. Over mute, over headphones. Then it locks the screen, photographs
+whoever is standing there, and pushes that photo to your phone over ntfy. So
+you find out while it is still happening, not when you get back to the table.
 
 The camera is doing something unusual here. It is a sensor, not just a way to
 get the photo. Each frame gets registered against the last, and the question is
