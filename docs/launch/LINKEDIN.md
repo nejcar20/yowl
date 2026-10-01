@@ -32,13 +32,7 @@ The clever part is that it watches through the camera. Not to take the picture,
 but to tell your laptop being picked up from somebody just walking past it in a
 busy room. We haven't found another Mac app that does that.
 
-The lid nearly beat us. Close a MacBook and it is asleep a second later, alarm
-and all, which is awkward when closing the lid is exactly what a thief does.
-Four ways of stopping that did not work. The fifth did, and it took longer than
-everything else in the app put together. It is also the only part that asks for
-your password.
-
-Try it on your own table. Free, MIT, open source. Suggestions and bug reports
+Try it out on your own Mac. Free, MIT, open source. Suggestions and bug reports
 very welcome, and a star on GitHub helps.
 
 dontstealmylaptop.com
@@ -59,10 +53,9 @@ dontstealmylaptop.com
   novel — Amphetamine keeps a Mac awake the same way — so the claim that holds
   is about alarm apps, and about what you looked for. Do not let it drift into
   "nobody has ever done this".
-- This post keeps the lid work plain and does not name the sudoers rule. The
-  Reddit draft does name it, in full, which is the right venue for it. The one
-  line kept here, that it asks your permission, is what stops the admin password
-  arriving as a surprise in the comments. Do not cut that line.
+- This post does not mention the lid feature at all, so it does not need to
+  mention the admin password either. The Reddit draft covers both in full, which
+  is the right venue. If a commenter asks here, the answer is in ANSWERS.md.
 - The image is generated: edit `card.html` and run `Scripts/make-launch-card.sh`.
 - Media order: the video first (it autoplays in feed and shows the whole thing
   in ten seconds), then the photo of the two of you, then the ntfy screenshot,
