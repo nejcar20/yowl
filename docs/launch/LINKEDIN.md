@@ -1,9 +1,12 @@
 # LinkedIn draft
 
-Post as a text post. If posting a carousel, order it: the photo of the two of
-you first, then `docs/img/card.png`, then `state-firing.png`, then `phone.png`.
-Link in the body. Tag Luka and ask them to comment rather than react. No
-hashtags.
+Post as a text post with the media attached. Tag Luka and ask them to comment
+rather than react. No hashtags.
+
+Keep the link in the body. It is a bare domain rather than a full URL, the
+attached video is already the preview, and "link in comments" costs a tap at
+the exact moment somebody has decided to look. Drop it into the first comment
+as well, which is free and catches anyone who reads the comments first.
 
 The first two lines are the whole game; LinkedIn folds everything after them
 behind "see more".
