@@ -25,16 +25,18 @@ picks it up. Over mute, over headphones. Then it locks the screen, photographs
 whoever is standing there, and sends that photo to your phone, so you find out
 while it is still happening.
 
-The video is Luka taking his own laptop off our stand at a trade fair.
+The video is Luka stealing his own laptop to prove it would not catch him. The
+screenshot is the photo it sent me.
 
-The camera is the unusual bit. It is a sensor here, not just a way to get the
-photo, so it can tell the laptop moving from somebody walking past. We haven't
-found another Mac app using it that way.
+The clever part is that it watches through the camera. Not to take the picture,
+but to tell your laptop being picked up from somebody just walking past it in a
+busy room. We haven't found another Mac app that does that.
 
-The lid nearly beat us. A Mac falls asleep a second or two after it shuts, and
-on battery it really means it. We tried four of the obvious ways to keep it
-awake. None work. The fifth does, and finding it took longer than every other
-feature put together. It is also the only part that asks your permission.
+The lid nearly beat us. Close a MacBook and it is asleep a second later, alarm
+and all, which is awkward when closing the lid is exactly what a thief does.
+Four ways of stopping that did not work. The fifth did, and it took longer than
+everything else in the app put together. It is also the only part that asks for
+your password.
 
 Try it on your own table. Free, MIT, open source. Suggestions and bug reports
 very welcome, and a star on GitHub helps.
