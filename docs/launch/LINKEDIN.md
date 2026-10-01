@@ -25,8 +25,8 @@ picks it up. Over mute, over headphones. Then it locks the screen, photographs
 whoever is standing there, and sends that photo to your phone, so you find out
 while it is still happening.
 
-The video is Luka stealing his own laptop and getting caught in the act. Worst
-criminal in the building.
+The video is Luka stealing his own laptop and getting caught in the act. Not a
+natural criminal.
 
 The clever part is that it watches through the camera. Not to take the picture,
 but to tell your laptop being picked up from somebody just walking past it in a
