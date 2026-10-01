@@ -25,6 +25,8 @@ picks it up. Over mute, over headphones. Then it locks the screen, photographs
 whoever is standing there, and sends that photo to your phone, so you find out
 while it is still happening.
 
+The video is Luka taking his own laptop off our stand at a trade fair.
+
 The camera is the unusual bit. It is a sensor here, not just a way to get the
 photo, so it can tell the laptop moving from somebody walking past. We haven't
 found another Mac app using it that way.
@@ -60,3 +62,10 @@ dontstealmylaptop.com
   line kept here, that it asks your permission, is what stops the admin password
   arriving as a surprise in the comments. Do not cut that line.
 - The image is generated: edit `card.html` and run `Scripts/make-launch-card.sh`.
+- Media order: the video first (it autoplays in feed and shows the whole thing
+  in ten seconds), then the photo of the two of you, then the ntfy screenshot,
+  then `docs/img/card.png`.
+- **The raw ntfy screenshot leaks the topic name.** That string is the access
+  control: anyone who reads it can subscribe to the alert feed and see every
+  photo the app sends. Post only a copy with it covered by a solid bar, never a
+  blur, and regenerate the topic in the app afterwards.
