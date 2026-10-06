@@ -4,8 +4,27 @@ A menu-bar alarm that makes stealing your MacBook loud.
 
 Free and open source (MIT). No accounts, no analytics, no servers.
 
-**[dontstealmylaptop.com](https://dontstealmylaptop.com)** — download, and a
-[walkthrough of what a theft looks like](https://dontstealmylaptop.com/demo.html).
+**[Download Yowl](https://dontstealmylaptop.com)** ·
+[Watch the 10-second demo](docs/demo.mp4) ·
+[See how it works](https://dontstealmylaptop.com/demo.html)
+
+[![A staged demo of someone unplugging and taking a MacBook](docs/img/demo-still.jpg)](docs/demo.mp4)
+
+*A very low-budget demo, featuring me as the world's least convincing laptop thief. Click to watch with sound.*
+
+| Armed | Alarm sounding |
+| :---: | :---: |
+| <img src="docs/img/state-armed.png" alt="Yowl armed in the Mac menu bar" width="280"> | <img src="docs/img/state-firing.png" alt="Yowl sounding its siren and waiting for the Mac to be unlocked" width="280"> |
+
+<details>
+<summary>Settings and phone alerts</summary>
+
+<p>
+  <img src="docs/img/settings.png" alt="Yowl settings, including siren, photos and phone alerts" width="250">
+  <img src="docs/img/phone.png" alt="An ntfy phone alert with alarm photos from Yowl" width="250">
+</p>
+
+</details>
 
 Arm it when you leave your laptop on a café table. If someone unplugs the
 charger, closes the lid, or picks the machine up, it screams at full volume —
