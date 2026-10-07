@@ -16,20 +16,25 @@ Free and open source (MIT). No accounts, no analytics, no servers.
 | :---: | :---: |
 | <img src="docs/img/state-armed.png" alt="Yowl armed in the Mac menu bar" width="280"> | <img src="docs/img/state-firing.png" alt="Yowl sounding its siren and waiting for the Mac to be unlocked" width="280"> |
 
-<details>
-<summary>Settings and phone alerts</summary>
-
-<p>
-  <img src="docs/img/settings.png" alt="Yowl settings, including siren, photos and phone alerts" width="250">
-  <img src="docs/img/phone.png" alt="An ntfy phone alert with alarm photos from Yowl" width="250">
-</p>
-
-</details>
-
 Arm it when you leave your laptop on a café table. If someone unplugs the
 charger, closes the lid, or picks the machine up, it screams at full volume —
 over mute, over headphones — locks the screen, and photographs whoever is
 in front of it. Only unlocking your Mac stops it.
+
+## Settings and phone alerts
+
+Choose the alarm responses in Settings. Photographs and phone alerts are
+optional; enable phone alerts and pair the free ntfy app to receive alarm
+notifications and photos on iPhone or Android.
+
+| Yowl settings | Phone alerts via ntfy |
+| :---: | :---: |
+| <a href="docs/img/settings.png"><img src="docs/img/settings.png" alt="Yowl settings showing siren, screen lock, photographs, grace period, and ntfy phone pairing" width="360"></a> | <a href="docs/img/phone-public.png"><img src="docs/img/phone-public.png" alt="iPhone ntfy notifications from a Yowl test, showing a lid-closed alert and three captured photo thumbnails; private details covered" width="360"></a> |
+| Configure the siren, photos, grace period, and phone pairing. | A staged test: the lid-closed notification and three captured photos. |
+
+*Click either screenshot to view it at full size. The settings topic and pairing
+code are obscured. Private details in the phone screenshot were covered using
+AI image editing.*
 
 ## What it is not
 
