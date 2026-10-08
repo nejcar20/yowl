@@ -69,14 +69,22 @@ public final class SudoersLidSleepSuppressor: LidSleepSuppressing {
             throw LidHelperError.invalidRule
         }
 
-        let command = "install -m 0440 -o root -g wheel "
-            + "'\(staged.path)' '\(Self.rulePath)' && /usr/sbin/visudo -c"
+        let command = Self.installCommand(staged: staged.path)
         let result = await Task.detached { Self.adminShell(command) }.value
         try? FileManager.default.removeItem(at: staged)
         guard result.output != nil else {
             log.error("helper install failed (\(result.status)): \(result.stderr, privacy: .public)")
             throw Self.adminFailure(from: result.stderr)
         }
+    }
+
+    /// Checks only Yowl's own file once it is in place. A bare `visudo -c`
+    /// checks every file in sudoers.d, so someone else's broken rule failed
+    /// this install with ours perfectly valid. On failure the file is removed
+    /// again: a rule that does not pass visudo must not be left in /etc.
+    nonisolated static func installCommand(staged: String) -> String {
+        "install -m 0440 -o root -g wheel '\(staged)' '\(rulePath)'"
+            + " && { /usr/sbin/visudo -c -f '\(rulePath)' || { rm -f '\(rulePath)'; exit 1; }; }"
     }
 
     /// Tells a cancelled prompt apart from a command that failed after the
@@ -154,24 +162,21 @@ public final class SudoersLidSleepSuppressor: LidSleepSuppressing {
         let task = Process()
         task.executableURL = URL(fileURLWithPath: path)
         task.arguments = args
-        let out = Pipe(), err = Pipe()
+        // Stderr goes to a file, not a second pipe: two pipes need concurrent
+        // draining or a full one blocks the child.
+        let errURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("yowl-stderr-\(UUID().uuidString)")
+        FileManager.default.createFile(atPath: errURL.path, contents: nil)
+        defer { try? FileManager.default.removeItem(at: errURL) }
+        let out = Pipe()
         task.standardOutput = out
-        task.standardError = err
+        task.standardError = try? FileHandle(forWritingTo: errURL)
         do { try task.run() } catch {
             return ShellResult(status: -1, output: nil, stderr: error.localizedDescription)
         }
-        // Drained concurrently: a full stderr pipe would block the child while
-        // stdout is still being read.
-        var errData = Data()
-        let group = DispatchGroup()
-        group.enter()
-        DispatchQueue.global().async {
-            errData = err.fileHandleForReading.readDataToEndOfFile()
-            group.leave()
-        }
         let outData = out.fileHandleForReading.readDataToEndOfFile()
-        group.wait()
         task.waitUntilExit()
+        let errData = (try? Data(contentsOf: errURL)) ?? Data()
         let stderr = String(data: errData, encoding: .utf8)?
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let output = task.terminationStatus == 0

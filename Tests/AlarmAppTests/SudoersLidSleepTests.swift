@@ -78,3 +78,14 @@ import Foundation
         "install: /etc/sudoers.d/yowl-disablesleep: Operation not permitted (1)"))
     #expect(error.errorDescription?.contains("Operation not permitted") == true)
 }
+
+/// Issue #1: a bare `visudo -c` validates every file in sudoers.d, so another
+/// app's broken rule failed this install. Only Yowl's own file is checked, and
+/// a file that fails is removed rather than left in /etc.
+@Test func theInstallChecksOnlyItsOwnFileAndRollsBack() {
+    let command = SudoersLidSleepSuppressor.installCommand(staged: "/tmp/staged")
+    let rule = SudoersLidSleepSuppressor.rulePath
+    #expect(command.contains("visudo -c -f '\(rule)'"))
+    #expect(command.contains("rm -f '\(rule)'"))
+    #expect(command.hasSuffix("visudo -c") == false)
+}
