@@ -122,15 +122,20 @@ nonisolated public final class PmsetSleepDisabler: Sendable {
     }
 }
 
-public enum LidHelperError: Error, LocalizedError {
+public enum LidHelperError: Error, LocalizedError, Equatable {
     case registrationRefused
     case invalidRule
     case notAuthorised
+    /// The password was accepted and the install still failed. Carries the
+    /// underlying error, because "not authorised" sends people looking in the
+    /// wrong place.
+    case installFailed(String)
     public var errorDescription: String? {
         switch self {
         case .registrationRefused: return "macOS refused to register the helper."
         case .invalidRule: return "The permission rule failed validation and was not installed."
         case .notAuthorised: return "Not authorised — the administrator prompt was cancelled or refused."
+        case .installFailed(let detail): return "The helper could not be installed: \(detail)"
         }
     }
 }

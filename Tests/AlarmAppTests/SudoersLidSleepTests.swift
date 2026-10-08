@@ -54,3 +54,27 @@ import Foundation
 
     #expect(FileManager.default.fileExists(atPath: path) == before)
 }
+
+/// Issue #1: an install that failed after the password was accepted showed the
+/// same "cancelled or refused" message as a cancel, because stderr was thrown
+/// away. The cause has to reach the person, or nobody can fix it.
+@Test func aFailingCommandKeepsItsStderr() {
+    let result = SudoersLidSleepSuppressor.run("/bin/sh", ["-c", "echo oops >&2; exit 3"])
+    #expect(result.status == 3)
+    #expect(result.stderr == "oops")
+    #expect(result.output == nil)
+}
+
+@Test func cancellingThePromptIsReportedAsNotAuthorised() {
+    let error = SudoersLidSleepSuppressor.adminFailure(
+        from: "0:98: execution error: User canceled. (-128)")
+    #expect(error == .notAuthorised)
+}
+
+@Test func anyOtherAdminFailureCarriesTheUnderlyingError() {
+    let error = SudoersLidSleepSuppressor.adminFailure(
+        from: "0:98: execution error: install: /etc/sudoers.d/yowl-disablesleep: Operation not permitted (1)")
+    #expect(error == .installFailed(
+        "install: /etc/sudoers.d/yowl-disablesleep: Operation not permitted (1)"))
+    #expect(error.errorDescription?.contains("Operation not permitted") == true)
+}

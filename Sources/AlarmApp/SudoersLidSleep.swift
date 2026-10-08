@@ -71,9 +71,27 @@ public final class SudoersLidSleepSuppressor: LidSleepSuppressing {
 
         let command = "install -m 0440 -o root -g wheel "
             + "'\(staged.path)' '\(Self.rulePath)' && /usr/sbin/visudo -c"
-        let ok = await Task.detached { Self.adminShell(command) != nil }.value
+        let result = await Task.detached { Self.adminShell(command) }.value
         try? FileManager.default.removeItem(at: staged)
-        guard ok else { throw LidHelperError.notAuthorised }
+        guard result.output != nil else {
+            log.error("helper install failed (\(result.status)): \(result.stderr, privacy: .public)")
+            throw Self.adminFailure(from: result.stderr)
+        }
+    }
+
+    /// Tells a cancelled prompt apart from a command that failed after the
+    /// password was accepted. Both used to read "not authorised", which hid
+    /// the real error (issue #1).
+    nonisolated static func adminFailure(from stderr: String) -> LidHelperError {
+        // osascript reports a cancel as AppleScript error -128.
+        if stderr.contains("(-128)") { return .notAuthorised }
+        // Strip osascript's "0:98: execution error: " so the cause reads first.
+        var detail = stderr
+        if let range = detail.range(of: "execution error: ") {
+            detail = String(detail[range.upperBound...])
+        }
+        detail = detail.trimmingCharacters(in: .whitespacesAndNewlines)
+        return .installFailed(detail.isEmpty ? "no error output" : detail)
     }
 
     public func uninstall() async throws {
@@ -124,27 +142,54 @@ public final class SudoersLidSleepSuppressor: LidSleepSuppressing {
 
     // MARK: - Shell
 
-    @discardableResult
-    nonisolated static func shell(_ path: String, _ args: [String]) -> String? {
+    struct ShellResult {
+        let status: Int32
+        /// Stdout on success, nil on any failure — the shape `shell` returns.
+        let output: String?
+        let stderr: String
+    }
+
+    /// Runs a command and keeps its stderr, so a failure can say why.
+    nonisolated static func run(_ path: String, _ args: [String]) -> ShellResult {
         let task = Process()
         task.executableURL = URL(fileURLWithPath: path)
         task.arguments = args
-        let pipe = Pipe()
-        task.standardOutput = pipe
-        task.standardError = FileHandle.nullDevice
-        do { try task.run() } catch { return nil }
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        let out = Pipe(), err = Pipe()
+        task.standardOutput = out
+        task.standardError = err
+        do { try task.run() } catch {
+            return ShellResult(status: -1, output: nil, stderr: error.localizedDescription)
+        }
+        // Drained concurrently: a full stderr pipe would block the child while
+        // stdout is still being read.
+        var errData = Data()
+        let group = DispatchGroup()
+        group.enter()
+        DispatchQueue.global().async {
+            errData = err.fileHandleForReading.readDataToEndOfFile()
+            group.leave()
+        }
+        let outData = out.fileHandleForReading.readDataToEndOfFile()
+        group.wait()
         task.waitUntilExit()
-        guard task.terminationStatus == 0 else { return nil }
-        return String(data: data, encoding: .utf8) ?? ""
+        let stderr = String(data: errData, encoding: .utf8)?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let output = task.terminationStatus == 0
+            ? (String(data: outData, encoding: .utf8) ?? "") : nil
+        return ShellResult(status: task.terminationStatus, output: output, stderr: stderr)
+    }
+
+    @discardableResult
+    nonisolated static func shell(_ path: String, _ args: [String]) -> String? {
+        run(path, args).output
     }
 
     /// One admin prompt, shown by macOS itself. Used only to install or remove
     /// the rule — never to run pmset, which is the whole point of the rule.
-    nonisolated static func adminShell(_ command: String) -> String? {
+    nonisolated static func adminShell(_ command: String) -> ShellResult {
         let escaped = command.replacingOccurrences(of: "\\", with: "\\\\")
             .replacingOccurrences(of: "\"", with: "\\\"")
-        return shell("/usr/bin/osascript",
-                     ["-e", "do shell script \"\(escaped)\" with administrator privileges"])
+        return run("/usr/bin/osascript",
+                   ["-e", "do shell script \"\(escaped)\" with administrator privileges"])
     }
 }
