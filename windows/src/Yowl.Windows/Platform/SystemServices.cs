@@ -114,10 +114,10 @@ internal sealed class SystemSleepObserver : ISystemSleepObserver
     {
         switch (e.Mode)
         {
-            // Posted like everything else: the controller is single-threaded.
-            // Windows allows only a moment before suspending, so the notice is
-            // best effort, as it is on the Mac.
-            case PowerModes.Suspend: UiThread.Post(() => _willSleep?.Invoke()); break;
+            // Run at once when already on the UI thread (SystemEvents usually
+            // raises there): Windows allows only a moment before suspending,
+            // and a posted notice tends to go out after the wake instead.
+            case PowerModes.Suspend: UiThread.Run(() => _willSleep?.Invoke()); break;
             case PowerModes.Resume: UiThread.Post(() => _didWake?.Invoke()); break;
         }
     }
@@ -132,18 +132,75 @@ internal sealed class SystemSleepObserver : ISystemSleepObserver
 /// <summary>
 /// Keeps Windows from idle-sleeping while armed. It cannot stop the lid
 /// putting the laptop to sleep; that is the separate lid setting.
-/// Must be called on the UI thread: the request belongs to the calling thread.
+///
+/// Two mechanisms, because one is not enough on current laptops: the classic
+/// thread execution state, and a power request. On Modern Standby machines
+/// (most laptops sold since about 2020) the execution state alone may not stop
+/// standby when the display times out, which would freeze an armed alarm on a
+/// desk. Must be called on the UI thread: the execution state belongs to it.
 /// </summary>
 internal sealed class ExecutionStateSleepAssertion : ISleepAssertion
 {
+    private IntPtr _request;
+    private IntPtr _reason;
+
     public void Acquire(string reason)
     {
+        Release();
         var previous = NativeMethods.SetThreadExecutionState(
             NativeMethods.ExecutionState.Continuous | NativeMethods.ExecutionState.SystemRequired);
-        if (previous == 0) throw new InvalidOperationException("Windows refused the keep-awake request.");
+
+        // Kept alive until the request is closed: Windows may read it later.
+        _reason = Marshal.StringToHGlobalUni(reason);
+        var context = new ReasonContext { Version = 0, Flags = SimpleString, Reason = _reason };
+        _request = PowerCreateRequest(ref context);
+        var requested = _request != InvalidHandle && _request != IntPtr.Zero
+                        && PowerSetRequest(_request, SystemRequired)
+                        && PowerSetRequest(_request, ExecutionRequired);
+
+        if (previous == 0 && !requested) throw new InvalidOperationException("Windows refused the keep-awake request.");
     }
 
-    public void Release() => NativeMethods.SetThreadExecutionState(NativeMethods.ExecutionState.Continuous);
+    public void Release()
+    {
+        NativeMethods.SetThreadExecutionState(NativeMethods.ExecutionState.Continuous);
+        if (_request != IntPtr.Zero && _request != InvalidHandle)
+        {
+            PowerClearRequest(_request, ExecutionRequired);
+            PowerClearRequest(_request, SystemRequired);
+            CloseHandle(_request);
+        }
+        _request = IntPtr.Zero;
+        if (_reason != IntPtr.Zero) Marshal.FreeHGlobal(_reason);
+        _reason = IntPtr.Zero;
+    }
+
+    private const uint SimpleString = 0x1;
+    private const int SystemRequired = 1, ExecutionRequired = 3;
+    private static readonly IntPtr InvalidHandle = new(-1);
+
+    /// <summary>REASON_CONTEXT, with the union padded to its full size.</summary>
+    [StructLayout(LayoutKind.Sequential)]
+    private struct ReasonContext
+    {
+        public uint Version;
+        public uint Flags;
+        public IntPtr Reason;
+        public IntPtr Padding1;
+        public IntPtr Padding2;
+    }
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern IntPtr PowerCreateRequest(ref ReasonContext context);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool PowerSetRequest(IntPtr request, int type);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool PowerClearRequest(IntPtr request, int type);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool CloseHandle(IntPtr handle);
 }
 
 /// <summary>Starts Yowl at login via the current user's Run key. No administrator rights needed.</summary>
@@ -186,7 +243,15 @@ internal sealed class WindowsClipboard : IClipboard
         data.SetData("ExcludeClipboardContentFromMonitorProcessing", new MemoryStream(new byte[4]));
         data.SetData("CanIncludeInClipboardHistory", new MemoryStream(BitConverter.GetBytes(0)));
         data.SetData("CanUploadToCloudClipboard", new MemoryStream(BitConverter.GetBytes(0)));
-        Clipboard.SetDataObject(data, copy: true);
+        try
+        {
+            // Retries briefly: another app holding the clipboard open is common.
+            Clipboard.SetDataObject(data, copy: true, retryTimes: 5, retryDelay: 100);
+        }
+        catch (System.Runtime.InteropServices.ExternalException)
+        {
+            throw new InvalidOperationException("The clipboard is in use by another app. Try again.");
+        }
     }
 }
 
@@ -209,4 +274,11 @@ internal static class UiThread
         ?? throw new InvalidOperationException("No UI synchronization context.");
 
     public static void Post(Action action) => _context?.Post(_ => action(), null);
+
+    /// <summary>Runs now if already on the UI thread, otherwise posts.</summary>
+    public static void Run(Action action)
+    {
+        if (_context is not null && SynchronizationContext.Current == _context) action();
+        else Post(action);
+    }
 }

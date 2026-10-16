@@ -22,33 +22,56 @@ internal sealed class SpeakerAudio : ISirenPlayer, IAudioOutputControl, IDisposa
 
     private readonly MMDeviceEnumerator _enumerator = new();
     private WasapiOut? _output;
+    /// <summary>The device the siren is playing on, kept alive for as long as the stream is.</summary>
+    private MMDevice? _outputDevice;
+    /// <summary>
+    /// Set when the current stream stopped without being asked. Only that
+    /// stream's event counts: NAudio posts PlaybackStopped late, and a stale
+    /// one from an earlier stream would mark the new one dead, and every
+    /// one-second restart would then post another.
+    /// </summary>
     private volatile bool _stoppedUnderneath;
 
     /// <summary>
     /// The built-in speakers if they can be told apart, else the default output.
     /// Re-resolved on every call: devices come and go, and a stale handle to an
-    /// unplugged one plays to nothing.
+    /// unplugged one plays to nothing. The caller owns, and must dispose, the
+    /// result; every other device enumerated is disposed here. Each MMDevice
+    /// whose volume is touched registers a Windows callback that only Dispose
+    /// removes, so leaking them leaks one registration per second of siren.
     /// </summary>
     private MMDevice? Target()
     {
+        var candidates = new List<MMDevice>();
         try
         {
-            var active = _enumerator.EnumerateAudioEndPoints(DataFlow.Render, DeviceState.Active).ToList();
-            var speakers = active.Where(IsSpeakers).ToList();
-            var defaultDevice = _enumerator.HasDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia)
-                ? _enumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia)
+            candidates.AddRange(_enumerator.EnumerateAudioEndPoints(DataFlow.Render, DeviceState.Active));
+            var defaultId = _enumerator.HasDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia)
+                ? DefaultId()
                 : null;
+            var speakers = candidates.Where(IsSpeakers).ToList();
             // The default, if it is a speaker; otherwise the first speaker;
-            // otherwise whatever is the default. Making some noise somewhere
-            // beats choosing nothing.
-            return speakers.FirstOrDefault(d => d.ID == defaultDevice?.ID)
-                   ?? speakers.FirstOrDefault()
-                   ?? defaultDevice;
+            // otherwise the default. Some noise somewhere beats choosing nothing.
+            var chosen = speakers.FirstOrDefault(d => d.ID == defaultId)
+                         ?? speakers.FirstOrDefault()
+                         ?? candidates.FirstOrDefault(d => d.ID == defaultId);
+            candidates.Remove(chosen!);
+            return chosen;
         }
         catch (Exception e) when (e is System.Runtime.InteropServices.COMException or InvalidOperationException)
         {
             return null;
         }
+        finally
+        {
+            foreach (var device in candidates) device.Dispose();
+        }
+    }
+
+    private string DefaultId()
+    {
+        using var device = _enumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia);
+        return device.ID;
     }
 
     private static bool IsSpeakers(MMDevice device)
@@ -65,24 +88,29 @@ internal sealed class SpeakerAudio : ISirenPlayer, IAudioOutputControl, IDisposa
     }
 
     /// <summary>For the self-test: every active output, and which one the siren would use.</summary>
-    public IEnumerable<string> Describe()
+    public IReadOnlyList<string> Describe()
     {
-        var target = Target();
+        using var target = Target();
+        var lines = new List<string>();
         foreach (var device in _enumerator.EnumerateAudioEndPoints(DataFlow.Render, DeviceState.Active))
         {
-            var mark = device.ID == target?.ID ? "->" : "  ";
-            yield return $"{mark} {device.FriendlyName} [{(IsSpeakers(device) ? "speakers" : "other")}]"
-                       + $" volume {device.AudioEndpointVolume.MasterVolumeLevelScalar:P0}"
-                       + (device.AudioEndpointVolume.Mute ? " muted" : "");
+            using (device)
+            {
+                var mark = device.ID == target?.ID ? "->" : "  ";
+                lines.Add($"{mark} {device.FriendlyName} [{(IsSpeakers(device) ? "speakers" : "other")}]"
+                          + $" volume {device.AudioEndpointVolume.MasterVolumeLevelScalar:P0}"
+                          + (device.AudioEndpointVolume.Mute ? " muted" : ""));
+            }
         }
-        if (target is null) yield return "   no output found";
+        if (target is null) lines.Add("   no output found");
+        return lines;
     }
 
     // MARK: - IAudioOutputControl
 
     public AudioOutputState? CurrentState()
     {
-        var device = Target();
+        using var device = Target();
         if (device is null) return null;
         var volume = device.AudioEndpointVolume;
         return new AudioOutputState(device.ID, volume.MasterVolumeLevelScalar, volume.Mute);
@@ -90,7 +118,7 @@ internal sealed class SpeakerAudio : ISirenPlayer, IAudioOutputControl, IDisposa
 
     public void ForceMaxVolume()
     {
-        var device = Target() ?? throw new InvalidOperationException("No audio output.");
+        using var device = Target() ?? throw new InvalidOperationException("No audio output.");
         var volume = device.AudioEndpointVolume;
         volume.Mute = false;
         volume.MasterVolumeLevelScalar = 1f;
@@ -100,7 +128,8 @@ internal sealed class SpeakerAudio : ISirenPlayer, IAudioOutputControl, IDisposa
     {
         try
         {
-            var volume = _enumerator.GetDevice(state.DeviceId).AudioEndpointVolume;
+            using var device = _enumerator.GetDevice(state.DeviceId);
+            var volume = device.AudioEndpointVolume;
             volume.MasterVolumeLevelScalar = state.Volume;
             volume.Mute = state.Muted;
         }
@@ -130,17 +159,22 @@ internal sealed class SpeakerAudio : ISirenPlayer, IAudioOutputControl, IDisposa
             var mix = device.AudioClient.MixFormat;
             var siren = new SirenWave(mix.SampleRate, mix.Channels);
             var output = new WasapiOut(device, AudioClientShareMode.Shared, useEventSync: true, latency: 100);
-            output.PlaybackStopped += (_, _) => _stoppedUnderneath = true;
+            output.PlaybackStopped += (sender, _) =>
+            {
+                if (ReferenceEquals(sender, _output)) _stoppedUnderneath = true;
+            };
             output.Init(siren);
             _stoppedUnderneath = false;
-            output.Play();
             _output = output;
+            _outputDevice = device;
+            output.Play();
             return true;
         }
         catch (Exception e) when (e is System.Runtime.InteropServices.COMException or InvalidOperationException
                                        or ArgumentException or NotSupportedException)
         {
             Stop();
+            if (!ReferenceEquals(device, _outputDevice)) device.Dispose();
             return false;
         }
     }
@@ -148,10 +182,16 @@ internal sealed class SpeakerAudio : ISirenPlayer, IAudioOutputControl, IDisposa
     public void Stop()
     {
         var output = _output;
+        var device = _outputDevice;
+        // Cleared first, so the PlaybackStopped this causes is recognised as stale.
         _output = null;
-        if (output is null) return;
-        try { output.Stop(); } catch (System.Runtime.InteropServices.COMException) { }
-        output.Dispose();
+        _outputDevice = null;
+        if (output is not null)
+        {
+            try { output.Stop(); } catch (System.Runtime.InteropServices.COMException) { }
+            output.Dispose();
+        }
+        device?.Dispose();
     }
 
     public void Dispose()

@@ -10,7 +10,7 @@ the "Windows pieces" line has only been compiled and run in CI, not on a laptop.
 |---|---|---|
 | `src/Yowl.Core` | The engine, triggers, responses, motion detector, settings and alert logic. A port of `Sources/AlarmCore` and `AppModel`. | Any OS |
 | `src/Yowl.Windows` | The tray app and every Windows API call | Windows 10 2004+ / 11, x64 and ARM64 |
-| `tests/Yowl.Core.Tests` | 121 tests, mostly the Mac suite's scenarios | Any OS |
+| `tests/Yowl.Core.Tests` | 122 tests, mostly the Mac suite's scenarios | Any OS |
 
 ## Build
 
@@ -54,6 +54,9 @@ artifact on every push that touches `windows/`.
    - Try muting while it sounds: the volume should come back within a second.
    - Turn on **Laptop is moved**, use **Test sensitivity**: nudging the laptop
      should move the number, waving a hand should not.
+   - Arm with the charger in and leave it until the screen turns off by
+     itself, then pull the charger. It must still go off: on Modern Standby
+     laptops this is the case most likely to differ from the Mac.
    - Turn on **Keep screaming with the lid closed**, arm, pull the charger,
      close the lid: it should keep sounding for the chosen time, and
      *Control Panel → Power Options → Choose what closing the lid does* should
@@ -67,7 +70,7 @@ artifact on every push that touches `windows/`.
 | IOKit power source | `SystemInformation.PowerStatus` + `PowerModeChanged`, polled each second as backup | `SystemServices.cs` |
 | `SACLockScreenImmediate` | `LockWorkStation` | `SystemServices.cs` |
 | `com.apple.screenIsUnlocked` | `SessionSwitch` → `SessionUnlock` | `SystemServices.cs` |
-| IOKit sleep assertion | `SetThreadExecutionState` | `SystemServices.cs` |
+| IOKit sleep assertion | `SetThreadExecutionState` plus a `PowerSetRequest`, for Modern Standby laptops | `SystemServices.cs` |
 | CoreAudio: force built-in speakers | WASAPI: render straight to the endpoint whose form factor is *Speakers*, and hold its volume | `SpeakerAudio.cs` |
 | AVAudioEngine siren | Same generated sweep, via NAudio | `SpeakerAudio.cs` |
 | AVFoundation camera | `Windows.Media.Capture` frame reader | `WinRtCamera.cs` |

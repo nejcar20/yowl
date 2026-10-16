@@ -557,17 +557,29 @@ public sealed class YowlController
     public void CopyAlertLink()
     {
         if (AlertSubscribeUrl.Length == 0) return;
-        _deps.Clipboard.WriteSecret(AlertSubscribeUrl);
-        SettingsMessage = "Link copied. Open it in a browser on your phone.";
+        SettingsMessage = TryCopy(AlertSubscribeUrl) ?? "Link copied. Open it in a browser on your phone.";
         Notify();
     }
 
     public void CopyAlertTopic()
     {
         if (AlertTopic.Length == 0) return;
-        _deps.Clipboard.WriteSecret(AlertTopic);
-        SettingsMessage = "Topic copied. In the ntfy app tap +, leave the server as ntfy.sh, and paste it.";
+        SettingsMessage = TryCopy(AlertTopic) ?? "Topic copied. In the ntfy app tap +, leave the server as ntfy.sh, and paste it.";
         Notify();
+    }
+
+    /// <summary>Copies, returning why it failed, or null. Another app holding the clipboard is common.</summary>
+    private string? TryCopy(string text)
+    {
+        try
+        {
+            _deps.Clipboard.WriteSecret(text);
+            return null;
+        }
+        catch (Exception e)
+        {
+            return "Could not copy: " + e.Message;
+        }
     }
 
     public async Task SendTestAlertAsync()

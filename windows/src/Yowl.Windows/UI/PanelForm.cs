@@ -205,17 +205,15 @@ internal sealed class PanelForm : Form
     /// </summary>
     public DateTime LastHidden { get; private set; }
 
+    /// <summary>Where the panel was opened from, so it stays anchored there as it grows and shrinks.</summary>
+    private Point _anchor;
+
     /// <summary>Opens beside the tray, inside the screen the cursor is on.</summary>
     public void ShowNearTray()
     {
+        _anchor = Cursor.Position;
         Render();
-        var area = Screen.FromPoint(Cursor.Position).WorkingArea;
-        var wanted = _stack.PreferredSize.Height + Padding.Vertical;
-        Height = Math.Min(wanted, area.Height - 24);
-        Width = _stack.PreferredSize.Width + Padding.Horizontal + (wanted > Height ? SystemInformation.VerticalScrollBarWidth : 0);
-        var x = Math.Clamp(Cursor.Position.X - Width / 2, area.Left + 12, area.Right - Width - 12);
-        var y = Cursor.Position.Y > area.Top + area.Height / 2 ? area.Bottom - Height - 12 : area.Top + 12;
-        Location = new Point(x, y);
+        Place();
         Show();
         Activate();
         if (_disarmGroup.Visible && _disarmPasscode.Visible) _disarmPasscode.Focus();
@@ -298,8 +296,26 @@ internal sealed class PanelForm : Form
             ResumeLayout(true);
             _rendering = false;
         }
-        if (Visible) Height = Math.Min(_stack.PreferredSize.Height + Padding.Vertical,
-                                       Screen.FromControl(this).WorkingArea.Height - 24);
+        if (Visible) Place();
+    }
+
+    /// <summary>
+    /// Sizes the panel to its content and keeps it against the tray edge.
+    /// Re-run after every change: opening Settings grows the panel, and keeping
+    /// the old position pushed its bottom under the taskbar.
+    /// </summary>
+    private void Place()
+    {
+        var area = Screen.FromPoint(_anchor).WorkingArea;
+        var wanted = _stack.PreferredSize.Height + Padding.Vertical;
+        var height = Math.Min(wanted, area.Height - 24);
+        var width = _stack.PreferredSize.Width + Padding.Horizontal
+                    + (wanted > height ? SystemInformation.VerticalScrollBarWidth : 0);
+        var x = Math.Clamp(_anchor.X - width / 2, area.Left + 12, area.Right - width - 12);
+        // Taskbar at the bottom (the default) keeps the bottom edge fixed;
+        // at the top, the top edge.
+        var y = _anchor.Y > area.Top + area.Height / 2 ? area.Bottom - height - 12 : area.Top + 12;
+        Bounds = new Rectangle(x, y, width, height);
     }
 
     private void RenderSettings(YowlController m)

@@ -338,4 +338,14 @@ public class ControllerTests
         controller.SetPowerEnabled(false);
         Assert.True(changes > 0);
     }
+
+    [Fact]
+    public void ABusyClipboardIsReportedNotThrown()
+    {
+        var controller = Controller();
+        controller.SetAlertEnabled(true);
+        _clipboard.Fail = true;
+        controller.CopyAlertLink();
+        Assert.StartsWith("Could not copy", controller.SettingsMessage);
+    }
 }

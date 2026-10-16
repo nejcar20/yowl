@@ -55,12 +55,14 @@ internal static class Program
             LidSleep: new LidActionSuppressor(dataDirectory),
             LoginItem: new RunKeyLoginItem()));
 
-        // Every way out puts the user's audio and lid setting back. Exit and a
-        // Windows sign-out or shutdown both get here; a kill from Task Manager
-        // does not, which is what the lid watchdog and the startup recovery
-        // are for.
+        // Every way out puts the user's audio and lid setting back. SessionEnded,
+        // not SessionEnding: Ending fires while Windows is still asking, so a
+        // thief clicking Restart and the restart then being cancelled would
+        // leave the alarm silenced and still showing ALARM. A kill from Task
+        // Manager reaches neither, which is what the lid watchdog and the
+        // startup recovery are for.
         Application.ApplicationExit += (_, _) => controller.Shutdown();
-        SystemEvents.SessionEnding += (_, _) => controller.Shutdown();
+        SystemEvents.SessionEnded += (_, _) => controller.Shutdown();
 
         using var context = new TrayContext(controller);
         Application.Run(context);

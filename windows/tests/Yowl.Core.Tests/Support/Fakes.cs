@@ -302,7 +302,12 @@ public sealed class FakeLoginItem : ILoginItem
 public sealed class FakeClipboard : IClipboard
 {
     public string? Last { get; private set; }
-    public void WriteSecret(string text) => Last = text;
+    public bool Fail { get; set; }
+    public void WriteSecret(string text)
+    {
+        if (Fail) throw new InvalidOperationException("The clipboard is in use by another app. Try again.");
+        Last = text;
+    }
 }
 
 public sealed class FakeShell : IShell

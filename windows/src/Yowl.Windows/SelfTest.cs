@@ -74,6 +74,14 @@ internal static class SelfTest
             return $"charger {status.PowerLineStatus}, battery {status.BatteryChargeStatus} {status.BatteryLifePercent:P0}";
         });
 
+        Check("Keep awake", () =>
+        {
+            var assertion = new ExecutionStateSleepAssertion();
+            assertion.Acquire("Yowl self-test");
+            assertion.Release();
+            return "requested and released";
+        });
+
         Check("Lid", () => new LidActionSuppressor(Path.GetTempPath()).Describe());
 
         Check("Audio outputs", () =>

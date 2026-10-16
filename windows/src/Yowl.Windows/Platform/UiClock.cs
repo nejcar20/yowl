@@ -16,7 +16,9 @@ internal sealed class UiClock : IAlarmClock
 
         public Work(TimeSpan after, Action body)
         {
-            _timer = new Timer { Interval = Math.Max(1, (int)Math.Ceiling(after.TotalMilliseconds)) };
+            // Clamped both ways: a WinForms interval must be positive and fit an int.
+            var milliseconds = Math.Clamp(Math.Ceiling(after.TotalMilliseconds), 1, int.MaxValue);
+            _timer = new Timer { Interval = (int)milliseconds };
             _timer.Tick += (_, _) =>
             {
                 // One-shot: stop and dispose before running, so a body that

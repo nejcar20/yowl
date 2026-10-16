@@ -35,6 +35,18 @@ internal sealed class WinRtCamera : ICamera, IDisposable
     private Action<GrayscaleFrame>? _onFrame;
     private volatile int _session;
 
+    /// <summary>
+    /// Restarts a camera that failed or went quiet. Another app taking it, a
+    /// USB camera unplugged, a driver that stops after sleep: each would
+    /// otherwise leave "Armed" over a dead camera. Runs on the UI thread.
+    /// </summary>
+    private System.Windows.Forms.Timer? _watchdog;
+    private DateTime _lastFrameUtc;
+    private volatile bool _failed;
+    private static readonly TimeSpan StallLimit = TimeSpan.FromSeconds(4);
+    /// <summary>Reused for frames that are not kept, so 15 fps does not allocate 15 buffers a second.</summary>
+    private byte[]? _scratch;
+
     // Guarded by _lock.
     private bool _highRate;
     private bool _retainStills;
@@ -102,9 +114,38 @@ internal sealed class WinRtCamera : ICamera, IDisposable
 
     public void Start(Action<GrayscaleFrame> onFrame)
     {
+        Stop();
+        Open(onFrame);
+        _lastFrameUtc = DateTime.UtcNow;
+        _watchdog = new System.Windows.Forms.Timer { Interval = 2000 };
+        _watchdog.Tick += (_, _) => CheckHealth();
+        _watchdog.Start();
+    }
+
+    private void CheckHealth()
+    {
+        var handler = _onFrame;
+        if (handler is null) return;
+        if (!_failed && DateTime.UtcNow - _lastFrameUtc < StallLimit) return;
+        Debug.WriteLine("Yowl: camera failed or stalled; restarting it.");
+        CloseCapture();
+        try
+        {
+            Open(handler);
+        }
+        catch (FrameSourceException)
+        {
+            // Still gone. Kept as the handler so the next tick tries again.
+            _onFrame = handler;
+        }
+        _lastFrameUtc = DateTime.UtcNow;
+    }
+
+    private void Open(Action<GrayscaleFrame> onFrame)
+    {
         bool wantsStills;
         lock (_lock) wantsStills = _retainStills;
-        Stop();
+        _failed = false;
         if (!IsAvailable) throw new FrameSourceException("This PC has no camera.");
 
         var session = ++_session;
@@ -135,6 +176,7 @@ internal sealed class WinRtCamera : ICamera, IDisposable
     private async Task<(MediaCapture, MediaFrameReader)> OpenAsync(bool wantsStills, int session)
     {
         var capture = new MediaCapture();
+        capture.Failed += (_, _) => { if (session == _session) _failed = true; };
         try
         {
             try
@@ -146,6 +188,7 @@ internal sealed class WinRtCamera : ICamera, IDisposable
                 // Another app has the camera. Watching alongside it beats not watching.
                 capture.Dispose();
                 capture = new MediaCapture();
+                capture.Failed += (_, _) => { if (session == _session) _failed = true; };
                 await capture.InitializeAsync(Settings(MediaCaptureSharingMode.SharedReadOnly));
             }
 
@@ -236,11 +279,15 @@ internal sealed class WinRtCamera : ICamera, IDisposable
             retain = _retainStills;
         }
 
-        using var bgra = bitmap.BitmapPixelFormat == BitmapPixelFormat.Bgra8
-            ? SoftwareBitmap.Copy(bitmap)
+        // The reader was asked for BGRA, so conversion is the rare case.
+        using var converted = bitmap.BitmapPixelFormat == BitmapPixelFormat.Bgra8
+            ? null
             : SoftwareBitmap.Convert(bitmap, BitmapPixelFormat.Bgra8);
+        var bgra = converted ?? bitmap;
         int width = bgra.PixelWidth, height = bgra.PixelHeight;
-        var pixels = new byte[width * height * 4];
+        var size = width * height * 4;
+        // A kept frame needs its own buffer; one only scored can reuse the last.
+        var pixels = retain ? new byte[size] : Interlocked.Exchange(ref _scratch, null) is { Length: var n } reused && n == size ? reused : new byte[size];
         bgra.CopyToBuffer(pixels.AsBuffer());
 
         if (retain)
@@ -267,9 +314,12 @@ internal sealed class WinRtCamera : ICamera, IDisposable
         }
 
         var gray = GrayscaleFrame.FromBgra(pixels, width, height, width * 4, TargetWidth, TargetHeight);
+        if (!retain) _scratch = pixels;
         UiThread.Post(() =>
         {
-            if (session == _session) _onFrame?.Invoke(gray);
+            if (session != _session) return;
+            _lastFrameUtc = DateTime.UtcNow;
+            _onFrame?.Invoke(gray);
         });
     }
 
@@ -292,6 +342,14 @@ internal sealed class WinRtCamera : ICamera, IDisposable
 
     public void Stop()
     {
+        _watchdog?.Stop();
+        _watchdog?.Dispose();
+        _watchdog = null;
+        CloseCapture();
+    }
+
+    private void CloseCapture()
+    {
         _session++;
         _onFrame = null;
         var reader = _reader;
@@ -303,14 +361,23 @@ internal sealed class WinRtCamera : ICamera, IDisposable
         {
             Task.Run(async () =>
             {
-                if (reader is not null) await reader.StopAsync();
-                reader?.Dispose();
-                capture?.Dispose();
+                // Disposed whatever StopAsync does: after a device loss it is
+                // likely to throw, and skipping the disposal would hold the
+                // camera, light on, until the app exits.
+                try
+                {
+                    if (reader is not null) await reader.StopAsync();
+                }
+                finally
+                {
+                    reader?.Dispose();
+                    capture?.Dispose();
+                }
             }).Wait(TimeSpan.FromSeconds(3));
         }
         catch (AggregateException)
         {
-            // A camera that will not stop cleanly is released when the app exits.
+            // Disposed above; the stop itself failing changes nothing.
         }
     }
 
