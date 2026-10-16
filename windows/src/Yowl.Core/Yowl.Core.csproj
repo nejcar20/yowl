@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Everything that is not a Windows API call. Targets plain net10.0 so the
+       whole engine, every trigger and response, and the settings model build
+       and test on any OS, including the Mac this was written on. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>Yowl.Core</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Yowl.Core.Tests" />
+  </ItemGroup>
+</Project>

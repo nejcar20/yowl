@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- The tray app and everything that calls Windows. The 10.0.19041 target
+       brings in the WinRT camera API (Windows.Media.Capture); 19041 is
+       Windows 10 2004, the oldest build Microsoft still supports. -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <SupportedOSPlatformVersion>10.0.19041.0</SupportedOSPlatformVersion>
+    <UseWindowsForms>true</UseWindowsForms>
+    <!-- LibraryImport generates its marshalling as unsafe code. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <RootNamespace>Yowl.Windows</RootNamespace>
+    <AssemblyName>Yowl</AssemblyName>
+    <ApplicationIcon>Assets\Yowl.ico</ApplicationIcon>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <!-- Dark mode follows the system; still marked experimental in WinForms. -->
+    <NoWarn>$(NoWarn);WFO5001</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="NAudio.Wasapi" Version="2.2.1" />
+    <PackageReference Include="QRCoder" Version="1.6.0" />
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.0" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Yowl.Core/Yowl.Core.csproj" />
+  </ItemGroup>
+</Project>

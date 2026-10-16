@@ -1,0 +1,69 @@
+name: Windows
+
+on:
+  push:
+    paths:
+      - "windows/**"
+      - ".github/workflows/windows.yml"
+  pull_request:
+    paths:
+      - "windows/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    name: Build, test, self-test
+    runs-on: windows-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: windows
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Run tests
+        run: dotnet test tests/Yowl.Core.Tests --configuration Release
+
+      - name: Publish x64 and ARM64
+        shell: pwsh
+        run: |
+          foreach ($rid in "win-x64", "win-arm64") {
+            dotnet publish src/Yowl.Windows/Yowl.Windows.csproj -c Release -r $rid --self-contained `
+              -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true `
+              -p:EnableCompressionInSingleFile=true -o "out/$rid"
+            if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          }
+
+      # The runner has no camera, no lid and usually no audio device, so those
+      # checks report what is missing; what this proves is that every Windows
+      # API Yowl calls loads and runs on real Windows.
+      - name: Self-test on Windows
+        shell: pwsh
+        run: |
+          $p = Start-Process out/win-x64/Yowl.exe -ArgumentList "--self-test" -Wait -PassThru -NoNewWindow
+          Get-Content "$env:TEMP/yowl-self-test.txt"
+          "exit code: $($p.ExitCode)"
+
+      - name: Upload Yowl.exe
+        uses: actions/upload-artifact@v4
+        with:
+          name: Yowl-windows
+          path: |
+            windows/out/win-x64/Yowl.exe
+            windows/out/win-arm64/Yowl.exe
+          retention-days: 30

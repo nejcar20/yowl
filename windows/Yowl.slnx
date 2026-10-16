@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Yowl.Core/Yowl.Core.csproj" />
+    <Project Path="src/Yowl.Windows/Yowl.Windows.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Yowl.Core.Tests/Yowl.Core.Tests.csproj" />
+  </Folder>
+</Solution>
