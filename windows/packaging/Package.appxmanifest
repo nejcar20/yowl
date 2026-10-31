@@ -16,7 +16,8 @@
     ProcessorArchitecture="$(Architecture)" />
 
   <Properties>
-    <DisplayName>Yowl</DisplayName>
+    <!-- Must match the name reserved in Partner Center; Start shows the shorter one below. -->
+    <DisplayName>Yowl - Laptop Theft Alarm</DisplayName>
     <PublisherDisplayName>$(PublisherDisplayName)</PublisherDisplayName>
     <Logo>Images\StoreLogo.png</Logo>
     <Description>A theft alarm for your laptop. Pull the charger, move the laptop or close the lid while it is armed and it screams at full volume through the built-in speakers, locks the screen, photographs whoever is there and can send the photos to your phone.</Description>

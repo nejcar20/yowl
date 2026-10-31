@@ -1,4 +1,4 @@
-<#
+﻿<#
 Builds the Microsoft Store upload from the published Yowl.exe files.
 
     ./scripts/package-msix.ps1 -IdentityName 12345Name.Yowl -Publisher "CN=..." -PublisherDisplayName "..."
@@ -12,18 +12,18 @@ defaults only make a package that builds, not one the Store will accept.
 Needs makeappx.exe from the Windows SDK (installed on GitHub's Windows runners).
 #>
 param(
-    [string]$IdentityName = "Yowl",
-    [string]$Publisher = "CN=Yowl-Dev",
-    [string]$PublisherDisplayName = "Yowl",
+    [string]$IdentityName = "JernejKoica.Yowl-LaptopTheftAlarm",
+    [string]$Publisher = "CN=8F372153-5F48-4D5E-B611-D74BDDD354BF",
+    [string]$PublisherDisplayName = "Jernej Kočica",
     [string]$Root = (Join-Path $PSScriptRoot "..")
 )
 $ErrorActionPreference = "Stop"
 $Root = (Resolve-Path $Root).Path
 
 # Empty repository variables arrive as empty strings, not as missing values.
-if (-not $IdentityName) { $IdentityName = "Yowl" }
-if (-not $Publisher) { $Publisher = "CN=Yowl-Dev" }
-if (-not $PublisherDisplayName) { $PublisherDisplayName = "Yowl" }
+if (-not $IdentityName) { $IdentityName = "JernejKoica.Yowl-LaptopTheftAlarm" }
+if (-not $Publisher) { $Publisher = "CN=8F372153-5F48-4D5E-B611-D74BDDD354BF" }
+if (-not $PublisherDisplayName) { $PublisherDisplayName = "Jernej Kočica" }
 
 [xml]$props = Get-Content (Join-Path $Root "Directory.Build.props")
 $semver = ($props.Project.PropertyGroup | Where-Object { $_.Version } | Select-Object -First 1).Version
