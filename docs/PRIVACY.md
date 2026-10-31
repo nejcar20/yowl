@@ -1,6 +1,10 @@
 # Yowl — Privacy Policy
 
-_Last updated: 3 September 2026_
+_Last updated: 31 October 2026_
+
+This policy covers Yowl for Mac and Yowl for Windows. They work the same way;
+only where things are stored differs, and the Windows details are in their own
+section below.
 
 **Yowl collects nothing about you and has no servers.** There is no
 analytics, no crash reporting, no telemetry, and no account.
@@ -99,6 +103,33 @@ alarm that kept a bagged machine awake indefinitely would be a worse problem tha
 the one it solves. A detached watchdog releases the setting even if Yowl is force
 quit or the Mac is carried off mid-alarm, and disarming releases it immediately.
 
-## Contact## Contact
+## Yowl for Windows
+
+Everything above applies, with these differences.
+
+| What | Where |
+|---|---|
+| Your disarm passcode, if you set one | A file encrypted with Windows DPAPI for your user account, in Yowl's data folder. Same salted PBKDF2-SHA256 hash as on the Mac. |
+| Your alert link | Encrypted with DPAPI, in Yowl's data folder. |
+| Your settings | `settings.json` in Yowl's data folder. |
+| Alarm photographs | The `Evidence` folder in Yowl's data folder. Capped at the 40 most recent. |
+
+Yowl's data folder is `%LOCALAPPDATA%\Yowl` for the standalone app, or the
+app's own package folder when installed from the Microsoft Store. Uninstalling
+the Store app deletes it; for the standalone app, delete the folder.
+
+**Start at login** uses Windows' own startup setting and can be turned off in
+Settings › Apps › Startup.
+
+**Keep screaming with the lid closed** needs no administrator rights on
+Windows. While the alarm sounds it sets your lid-close action to "Do nothing"
+for the time you chose, then puts your own setting back. A separate watchdog
+restores it even if Yowl is ended mid-alarm, and Yowl checks again at its next
+start.
+
+The camera light behaves as on the Mac: it is on whenever movement detection or
+photographs are on and the alarm is armed.
+
+## Contact
 
 jernejkocica@gmail.com
