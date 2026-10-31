@@ -10,9 +10,9 @@ namespace Yowl.Core.Settings;
 public interface IPreferenceStore
 {
     /// <summary>
-    /// Most features default on: a user who never opens settings gets the most
-    /// protection. Motion, photographs and alerts pass false, because they hold
-    /// the camera open or send data off the machine.
+    /// Features default on: a user who never opens settings gets the most
+    /// protection. Phone alerts pass false, because they send data off the
+    /// machine.
     /// </summary>
     bool IsEnabled(string identifier, bool defaultValue = true);
     void SetEnabled(string identifier, bool enabled);

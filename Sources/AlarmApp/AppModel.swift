@@ -151,8 +151,8 @@ public final class AppModel: ObservableObject {
     @Published public private(set) var launchAtLogin = false
     @Published public private(set) var settingsMessage: String?
     @Published public private(set) var powerEnabled = true
-    @Published public private(set) var motionEnabled = false
-    @Published public private(set) var snapshotEnabled = false
+    @Published public private(set) var motionEnabled = true
+    @Published public private(set) var snapshotEnabled = true
     @Published public private(set) var alertEnabled = false
     @Published public private(set) var alertTopic = ""
     /// Surfaced once at launch when something had to be repaired or switched off
@@ -161,7 +161,7 @@ public final class AppModel: ObservableObject {
 
     /// Dismissable: it describes a one-off repair at launch, not a live state.
     public func dismissStartupMessage() { startupMessage = nil }
-    @Published public private(set) var lidEnabled = false
+    @Published public private(set) var lidEnabled = true
     @Published public private(set) var liveMotionScore: Double?
     @Published public private(set) var isCalibrating = false
     /// Shown in the main panel, not buried in settings: a configuration that
@@ -321,17 +321,13 @@ public final class AppModel: ObservableObject {
         siren.isEnabled = siren.isAvailable && preferences.isEnabled(siren.identifier)
         lock.isEnabled = lock.isAvailable && preferences.isEnabled(lock.identifier)
         trigger.isEnabled = trigger.isAvailable && preferences.isEnabled(trigger.identifier)
-        // Motion is the one feature that stays off until asked for: it holds
-        // the camera open, and the green light is hardware-enforced. Everything
-        // else defaults on; this one requires a deliberate decision.
-        motion.isEnabled = motion.isAvailable
-            && preferences.isEnabled(motion.identifier, default: false)
-        // Lid and network default OFF like motion: both can fire in ordinary
-        // use — closing your own laptop, walking out of Wi-Fi range — so they
-        // are a deliberate choice rather than something to discover by accident.
-        lid.isEnabled = lid.isAvailable && preferences.isEnabled(lid.identifier, default: false)
-        snapshot.isEnabled = snapshot.isAvailable
-            && preferences.isEnabled(snapshot.identifier, default: false)
+        // Everything defaults on, motion and photographs included: a user who
+        // never opens settings gets the most protection. The camera light that
+        // brings is the price, and camera access is asked for at launch (below)
+        // rather than discovered missing at arm time.
+        motion.isEnabled = motion.isAvailable && preferences.isEnabled(motion.identifier)
+        lid.isEnabled = lid.isAvailable && preferences.isEnabled(lid.identifier)
+        snapshot.isEnabled = snapshot.isAvailable && preferences.isEnabled(snapshot.identifier)
         camera.setRetainsStills(snapshot.isEnabled)
         snapshotEnabled = snapshot.isActive
         // A stored preference of "on" with no topic in the Keychain used to leave
@@ -407,6 +403,26 @@ public final class AppModel: ObservableObject {
         // with no explanation, and the user would believe they are protected at
         // every login when they are not.
         settingsMessage = Self.pendingApprovalMessage()
+        if motion.isEnabled || snapshot.isEnabled {
+            Task { [weak self] in await self?.confirmCameraAccess() }
+        }
+    }
+
+    /// Motion and photographs are on by default, so the camera permission has
+    /// to be asked for at launch: on a fresh install this is the macOS prompt.
+    /// A refusal switches both off for this session and says why, without
+    /// storing it, so granting access in System Settings brings them back at
+    /// the next launch.
+    private func confirmCameraAccess() async {
+        guard !(await camera.requestAccess()) else { return }
+        motionTrigger.isEnabled = false
+        motionEnabled = false
+        snapshotResponse.isEnabled = false
+        snapshotEnabled = false
+        camera.setRetainsStills(false)
+        alertResponse.includesPhotographs = false
+        refreshProtectionWarning()
+        settingsMessage = "Motion detection and photographs are off: Yowl has no camera access. Grant it in System Settings ▸ Privacy & Security ▸ Camera."
     }
 
     // MARK: - Grace countdown
@@ -540,6 +556,8 @@ public final class AppModel: ObservableObject {
         // Switching the lock off removes the thing that authenticates a disarm,
         // so a passcode becomes required at exactly that moment.
         refreshPasscodeRequirement()
+        // And the protection warning hides while a passcode is needed.
+        refreshProtectionWarning()
         warnIfNoResponsesLeft()
     }
 
@@ -731,7 +749,6 @@ public final class AppModel: ObservableObject {
             self.motionTrigger.isEnabled = applied
             self.preferences.setEnabled(applied, for: self.motionTrigger.identifier)
             self.motionEnabled = self.motionTrigger.isActive
-        self.refreshProtectionWarning()
             self.refreshProtectionWarning()
             self.settingsMessage = applied ? nil
                 : "Yowl needs camera access for this. Grant it in System Settings ▸ Privacy & Security ▸ Camera."

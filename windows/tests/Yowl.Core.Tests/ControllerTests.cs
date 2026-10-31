@@ -104,11 +104,12 @@ public class ControllerTests
     }
 
     [Fact]
-    public void ArmingOnBatterySaysToPlugIn()
+    public async Task ArmingOnBatterySaysToPlugIn()
     {
         _passcodes.SetPasscode("1234");
         _power.Simulate(onAc: false);
         var controller = Controller();
+        await controller.SetMotionEnabledAsync(false);
         controller.Arm();
         Assert.False(controller.IsArmed);
         Assert.StartsWith("Plug the charger in", controller.ErrorMessage);
@@ -122,18 +123,19 @@ public class ControllerTests
         controller.SetSirenEnabled(false);
         controller.SetPowerEnabled(false);
         controller.SetScreenLockEnabled(false);
-        await controller.SetMotionEnabledAsync(true);
+        await controller.SetMotionEnabledAsync(false);
         Assert.True(controller.SirenEnabled);
         Assert.True(controller.PowerEnabled);
         Assert.True(controller.ScreenLockEnabled);
-        Assert.False(controller.MotionEnabled);
+        Assert.True(controller.MotionEnabled);
     }
 
     [Fact]
-    public void SwitchingTheOnlyTriggerOffShowsAWarningBeforeWalkingAway()
+    public async Task SwitchingTheOnlyTriggerOffShowsAWarningBeforeWalkingAway()
     {
         _passcodes.SetPasscode("1234");
         var controller = Controller();
+        await controller.SetMotionEnabledAsync(false);
         Assert.Null(controller.ProtectionWarning);
         controller.SetPowerEnabled(false);
         Assert.Contains("Nothing is watching", controller.ProtectionWarning);
@@ -151,13 +153,29 @@ public class ControllerTests
     }
 
     [Fact]
-    public async Task MotionIsOffByDefaultAndPersistsOnceOn()
+    public async Task MotionIsOnByDefaultAndPersistsOnceOff()
     {
         var controller = Controller();
-        Assert.False(controller.MotionEnabled);
-        await controller.SetMotionEnabledAsync(true);
         Assert.True(controller.MotionEnabled);
-        Assert.True(Controller().MotionEnabled);
+        await controller.SetMotionEnabledAsync(false);
+        Assert.False(controller.MotionEnabled);
+        Assert.False(Controller().MotionEnabled);
+    }
+
+    /// <summary>A user who never opens settings gets every trigger and response.</summary>
+    [Fact]
+    public void EverythingButPhoneAlertsIsOnByDefault()
+    {
+        var controller = Controller();
+        Assert.True(controller.PowerEnabled);
+        Assert.True(controller.MotionEnabled);
+        Assert.True(controller.SirenEnabled);
+        Assert.True(controller.ScreenLockEnabled);
+        Assert.True(controller.SnapshotEnabled);
+        Assert.True(controller.LidSleepEnabled);
+        Assert.False(controller.AlertEnabled);
+        Assert.Equal(TimeSpan.Zero, controller.Grace);
+        Assert.Equal(TimeSpan.FromMinutes(1), controller.LidHold);
     }
 
     [Fact]
@@ -165,7 +183,7 @@ public class ControllerTests
     {
         _passcodes.SetPasscode("1234");
         var controller = Controller();
-        await controller.SetSnapshotEnabledAsync(true);
+        await controller.SetMotionEnabledAsync(false);
         controller.Arm();
         Assert.True(_camera.IsRunning);
         Assert.True(_camera.RetainsStills);
@@ -178,11 +196,23 @@ public class ControllerTests
     {
         _passcodes.SetPasscode("1234");
         var controller = Controller();
-        await controller.SetSnapshotEnabledAsync(true);
+        await controller.SetMotionEnabledAsync(false);
         _camera.FailStart = true;
         controller.Arm();
         Assert.True(controller.IsArmed);
         Assert.Contains("no photographs", controller.WarningMessage);
+    }
+
+    [Fact]
+    public void WithTheDefaultsACameraThatWillNotStartStillArmsOnTheCharger()
+    {
+        _passcodes.SetPasscode("1234");
+        _camera.FailStart = true;
+        var controller = Controller();
+        controller.Arm();
+        Assert.True(controller.IsArmed);
+        Assert.Contains("no photographs", controller.WarningMessage);
+        Assert.Contains("Privacy", controller.WarningMessage);
     }
 
     [Fact]
@@ -202,6 +232,7 @@ public class ControllerTests
     [Fact]
     public async Task TheLidHoldIsTakenOnlyWhileFiringAndOnlyIfEnabled()
     {
+        _prefs.SetEnabled(YowlController.LidSleepKey, false);
         var controller = ArmedController();
         _power.Simulate(onAc: false);
         await controller.Engine.PendingFire;

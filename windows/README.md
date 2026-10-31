@@ -45,8 +45,8 @@ artifact on every push that touches `windows/`.
      the `^` overflow; drag it onto the taskbar).
    - Click it. With **Lock the screen** on, no passcode is needed; set one
      anyway under Settings to test that path.
-   - Settings → turn on **Photograph whoever is there**, allow the camera.
-   - Settings → **Send an alert to my phone** → scan the code → **Send test**.
+   - Movement detection, photographs and the lid hold are on by default; Windows may ask for camera access on the first arm.
+   - Settings → **Send an alert to my phone** → pair the phone (Android: scan the code; iPhone: type the topic into the ntfy app) → **Send test**.
    - Plug in the charger, **Arm**, pull the charger.
    - Expected: siren at full volume on the laptop speakers even with
      headphones in, Windows locks, photos in `%LOCALAPPDATA%\Yowl\Evidence`,

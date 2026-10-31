@@ -62,15 +62,17 @@ public sealed class YowlController
         _siren.IsEnabled = _siren.IsAvailable && prefs.IsEnabled(_siren.Identifier);
         _screenLock.IsEnabled = _screenLock.IsAvailable && prefs.IsEnabled(_screenLock.Identifier);
         _power.IsEnabled = _power.IsAvailable && prefs.IsEnabled(_power.Identifier);
-        // Off until asked for: motion holds the camera open and lights its LED.
-        _motion.IsEnabled = _motion.IsAvailable && prefs.IsEnabled(_motion.Identifier, false);
-        _snapshot.IsEnabled = _snapshot.IsAvailable && prefs.IsEnabled(_snapshot.Identifier, false);
+        // Everything defaults on, the camera features included: a user who
+        // never opens settings gets the most protection. Phone alerts are the
+        // exception, because they send data off the machine.
+        _motion.IsEnabled = _motion.IsAvailable && prefs.IsEnabled(_motion.Identifier);
+        _snapshot.IsEnabled = _snapshot.IsAvailable && prefs.IsEnabled(_snapshot.Identifier);
         deps.Camera.SetRetainsStills(_snapshot.IsEnabled);
         _alert.IncludesPhotographs = _snapshot.IsActive();
         ApplyAlertStartupDecision();
 
         deps.LidSleep.RecoverFromCrash();
-        LidSleepEnabled = deps.LidSleep.IsAvailable && prefs.IsEnabled(LidSleepKey, false);
+        LidSleepEnabled = deps.LidSleep.IsAvailable && prefs.IsEnabled(LidSleepKey);
         LidHold = prefs.LidHold;
         Grace = prefs.Grace;
         MotionSensitivityValue = MotionSensitivity.SensitivityFor(prefs.MotionThreshold);
@@ -179,7 +181,9 @@ public sealed class YowlController
             if (_engine.SleepAssertionFailed)
                 warnings.Add("Windows refused the keep-awake request, so a sleeping laptop may not notice the charger being pulled.");
             if (_engine.FailedTriggers.Contains(_motion.Identifier))
-                warnings.Add("The camera would not start, so movement is not being watched.");
+                warnings.Add("The camera would not start, so movement is not being watched"
+                             + (SnapshotEnabled ? " and no photographs will be taken" : "")
+                             + ". Check camera access in Windows Settings › Privacy & security › Camera.");
             if (photographsFailed)
                 warnings.Add("The camera would not start, so no photographs will be taken. Check camera access in Windows Settings › Privacy & security › Camera.");
             WarningMessage = warnings.Count == 0 ? null : "Armed, but: " + string.Join(" ", warnings);

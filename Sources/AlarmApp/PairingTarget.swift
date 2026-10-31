@@ -16,11 +16,15 @@ public enum PairingTarget: String, CaseIterable, Identifiable {
         }
     }
 
-    /// What actually happens when this phone scans the code.
-    public var scanOutcome: String {
+    /// Whether a code helps. iOS has no way to open the ntfy app from a scan,
+    /// and a code that opens a browser is not what anyone pairing wants, so
+    /// an iPhone is given the topic to type instead.
+    public var usesCode: Bool { self == .android }
+
+    public var instructions: String {
         switch self {
         case .iPhone:
-            return "Scan to open your alerts in a browser. iOS has no way to open the ntfy app from a code, so for push notifications enter the topic in the app:"
+            return "In the ntfy app tap +, leave the server as ntfy.sh, and enter this topic:"
         case .android:
             return "Scan to open the ntfy app and subscribe. Or enter the topic by hand:"
         }

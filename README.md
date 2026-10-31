@@ -47,18 +47,19 @@ theft loud and public, which is a different job.
 | Trigger | Default | Notes |
 |---|---|---|
 | **Charger unplugged** | on | The classic. Needs the charger plugged in to arm. |
-| **Laptop is moved** | off | Camera-based. Distinguishes the machine moving from people walking past it. |
-| **Lid closed part-way** | off | Reads the hinge sensor, so it fires ~80° before the lid shuts. |
+| **Laptop is moved** | on | Camera-based. Distinguishes the machine moving from people walking past it. |
+| **Lid closed part-way** | on | Reads the hinge sensor, so it fires ~80° before the lid shuts. |
 
-Motion and lid are off by default because each can fire in ordinary use —
-closing your own laptop is not theft.
+Everything is on by default, so a Mac that is never configured is as well
+protected as it gets. Each can be switched off in Settings. Closing your own
+lid while armed will set it off; unlocking the Mac disarms it.
 
 ## When it fires
 
 - **Siren** at forced maximum volume, out of the built-in speakers, overriding
   mute and any connected headphones.
 - **Screen lock**, so nobody browses your open session while it screams.
-- **Photographs** (optional) of whoever is there, including the ten seconds
+- **Photographs** of whoever is there, including the ten seconds
   *before* the alarm — often the more useful shot, since it catches someone
   walking up rather than the back of their head.
 - **A push to your phone** (optional) with the photos, via your own private
@@ -141,8 +142,9 @@ Move `build/Yowl.app` to `/Applications` if you want to keep it.
 Yowl lives in the **menu bar** — no Dock icon and no window. Look for the shield
 icon; everything is behind it.
 
-- It asks for **camera access** the first time you switch on a camera feature
-  (the motion trigger, or photographs). Nothing camera-related runs until you do.
+- It asks for **camera access** the first time it starts, because movement
+  detection and photographs are on by default. Refuse, and both stay off until
+  you grant it in System Settings.
 - If you have no Apple Development certificate on your Mac, the build script
   signs the app ad-hoc and says so. Everything works, but macOS ties camera
   permission to the signature, so it will ask again after every rebuild.
@@ -163,7 +165,7 @@ engine running, and silence. Deferring the sleep is not enough. The sleep has to
 not begin.
 
 The setting that prevents it is `pmset disablesleep`, which is root-only. So
-**Keep screaming with the lid closed** is off by default, and switching it on
+**Keep screaming with the lid closed** needs that rule, so switching it on
 asks once for an administrator password to install one rule:
 
     <you> ALL=(root) NOPASSWD: /usr/bin/pmset -a disablesleep 1, \

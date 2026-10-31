@@ -8,9 +8,9 @@ import Foundation
 /// user must never be able to switch those on. `isEnabled` answers "does the
 /// user want this one active?" A feature runs only when both are true.
 public protocol PreferenceStoring: AnyObject {
-    /// Most features default on: a user who never opens settings gets the most
-    /// protection, not the least. Motion is the exception and passes `false`,
-    /// because it holds the camera open.
+    /// Features default on: a user who never opens settings gets the most
+    /// protection, not the least. Phone alerts are the exception and pass
+    /// `false`, because they send data off the machine.
     func isEnabled(_ identifier: String, default defaultValue: Bool) -> Bool
     func setEnabled(_ enabled: Bool, for identifier: String)
     var graceSeconds: TimeInterval { get set }

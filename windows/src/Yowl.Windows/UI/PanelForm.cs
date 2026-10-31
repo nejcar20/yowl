@@ -42,6 +42,8 @@ internal sealed class PanelForm : Form
     private readonly Button _test, _openPhotos, _changePasscode;
     private readonly RadioButton _iphone, _android;
     private readonly PictureBox _qr;
+    private readonly Label _pairingHint;
+    private readonly TextBox _topic;
     private readonly ComboBox _lidHold;
     private readonly TextBox _changePasscodeText;
 
@@ -57,8 +59,13 @@ internal sealed class PanelForm : Form
         AutoScaleDimensions = new SizeF(96, 96);
         Font = new Font("Segoe UI", 9f);
         KeyPreview = true;
-        AutoScroll = true;
         Padding = new Padding(14, 12, 14, 12);
+        // Vertical scrolling only. The content has a fixed width, and a
+        // horizontal bar appeared whenever the vertical one took its room.
+        HorizontalScroll.Enabled = false;
+        HorizontalScroll.Visible = false;
+        HorizontalScroll.Maximum = 0;
+        AutoScroll = true;
 
         _stack = Column();
         _stack.Padding = Padding.Empty;
@@ -150,9 +157,20 @@ internal sealed class PanelForm : Form
         _iphone.CheckedChanged += (_, _) => Render();
         phones.Controls.AddRange([_iphone, _android]);
         _alertGroup.Controls.Add(phones);
+        // Android scans the code straight into the ntfy app. iOS cannot open
+        // the app from a code, so an iPhone gets the topic to type instead.
         _qr = new PictureBox { Size = new Size(150, 150), SizeMode = PictureBoxSizeMode.Zoom, Margin = new Padding(0, 4, 0, 4) };
         new ToolTip().SetToolTip(_qr, "Code that pairs your phone with this PC");
         _alertGroup.Controls.Add(_qr);
+        _pairingHint = Caption("");
+        _alertGroup.Controls.Add(_pairingHint);
+        _topic = new TextBox
+        {
+            ReadOnly = true, BorderStyle = BorderStyle.None, Multiline = true, WordWrap = true,
+            Font = new Font("Consolas", 11f), Width = ContentWidth - 20, Height = 44,
+            BackColor = BackColor, TabStop = false, Margin = new Padding(0, 2, 0, 6),
+        };
+        _alertGroup.Controls.Add(_topic);
         var alertButtons = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.LeftToRight, WrapContents = true, MaximumSize = new Size(ContentWidth - 20, 0), Margin = Padding.Empty };
         alertButtons.Controls.AddRange([
             Small("Copy link", (_, _) => _model.CopyAlertLink()),
@@ -309,8 +327,10 @@ internal sealed class PanelForm : Form
         var area = Screen.FromPoint(_anchor).WorkingArea;
         var wanted = _stack.PreferredSize.Height + Padding.Vertical;
         var height = Math.Min(wanted, area.Height - 24);
-        var width = _stack.PreferredSize.Width + Padding.Horizontal
-                    + (wanted > height ? SystemInformation.VerticalScrollBarWidth : 0);
+        // The scroll bar's width at this monitor's scale, plus a little slack:
+        // the system-wide figure is for 100% and left the content clipped.
+        var scrollBar = wanted > height ? SystemInformation.GetVerticalScrollBarWidthForDpi(DeviceDpi) + 4 : 0;
+        var width = _stack.PreferredSize.Width + Padding.Horizontal + scrollBar;
         var x = Math.Clamp(_anchor.X - width / 2, area.Left + 12, area.Right - width - 12);
         // Taskbar at the bottom (the default) keeps the bottom edge fixed;
         // at the top, the top edge.
@@ -351,8 +371,12 @@ internal sealed class PanelForm : Form
 
         _alert.Checked = m.AlertEnabled;
         _alertGroup.Visible = m.AlertEnabled;
-        var payload = m.AlertTopic.Length == 0 ? ""
-            : _android.Checked ? $"ntfy://ntfy.sh/{m.AlertTopic}" : m.AlertSubscribeUrl;
+        var payload = m.AlertTopic.Length == 0 || !_android.Checked ? "" : $"ntfy://ntfy.sh/{m.AlertTopic}";
+        _qr.Visible = payload.Length > 0;
+        _pairingHint.Text = _android.Checked
+            ? "Scan to open the ntfy app and subscribe. Or enter the topic by hand:"
+            : "In the ntfy app tap +, leave the server as ntfy.sh, and enter this topic:";
+        if (_topic.Text != m.AlertTopic) _topic.Text = m.AlertTopic;
         if (payload != _qrPayload)
         {
             _qrPayload = payload;

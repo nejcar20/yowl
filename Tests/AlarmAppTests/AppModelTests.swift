@@ -175,6 +175,8 @@ final class FakeCamera: FrameSourcing, StillCapturing {
 @Test @MainActor func armingWithEveryTriggerOffRefuses() {
     let (model, _, _, _) = makeModel()
     model.setPowerEnabled(false)
+    model.setMotionEnabled(false)
+    model.setLidEnabled(false)
     model.arm()
     #expect(model.isArmed == false)
     #expect(model.protectionWarning != nil)
@@ -299,6 +301,9 @@ func noProtectionWarningIsShownWhileAPasscodeIsStillNeeded() {
 @Test @MainActor
 func theProtectionWarningReturnsOnceThePasscodeIsSet() {
     let (model, _, _, _) = makeModel(onACPower: false, passcode: nil)
+    // Only the charger trigger, which cannot fire on battery.
+    model.setMotionEnabled(false)
+    model.setLidEnabled(false)
     model.setScreenLockEnabled(false)
     #expect(model.protectionWarning == nil)
 
@@ -630,4 +635,35 @@ func theChosenHoldIsWhatGetsUsedAndIsClamped() async throws {
     try await Task.sleep(nanoseconds: 300_000_000)
 
     #expect(lid.lastHoldSeconds == 120, "the alarm must use the chosen duration")
+}
+
+// MARK: - Defaults
+
+/// A user who never opens settings gets every trigger and every response.
+@Test @MainActor
+func everythingButPhoneAlertsIsOnByDefault() {
+    let (model, _, _, _) = makeModel()
+    #expect(model.powerEnabled)
+    #expect(model.motionEnabled)
+    #expect(model.lidEnabled)
+    #expect(model.sirenEnabled)
+    #expect(model.screenLockEnabled)
+    #expect(model.snapshotEnabled)
+    #expect(!model.alertEnabled)
+    #expect(model.graceSeconds == 0)
+    #expect(model.lidHoldSeconds == 60)
+}
+
+/// With camera access refused, the defaults that need it switch off and say
+/// so, rather than arming with a camera that will never deliver a frame.
+@Test @MainActor
+func refusedCameraAccessAtLaunchTurnsMotionAndPhotosOff() async {
+    let camera = FakeCamera()
+    camera.accessGranted = false
+    let (model, prefs, _, _) = makeModel(camera: camera)
+    for _ in 0..<50 where model.motionEnabled { await Task.yield() }
+    #expect(!model.motionEnabled)
+    #expect(!model.snapshotEnabled)
+    #expect(model.settingsMessage?.contains("camera access") == true)
+    #expect(prefs.isEnabled("motion"), "not stored, so granting access later brings it back")
 }

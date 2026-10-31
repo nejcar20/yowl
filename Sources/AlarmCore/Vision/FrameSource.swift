@@ -29,8 +29,7 @@ public protocol FrameSourcing: AnyObject {
 
 /// Captures from the built-in camera, downscaling to the detector's working
 /// size. The green camera light stays on for as long as this runs; that is
-/// hardware-enforced and cannot be suppressed, which is why motion detection is
-/// opt-in rather than on by default.
+/// hardware-enforced and cannot be suppressed.
 public final class CameraFrameSource: NSObject, FrameSourcing, StillCapturing,
                                       AVCaptureVideoDataOutputSampleBufferDelegate {
     /// Read from the capture queue, so these must not be main-actor isolated.

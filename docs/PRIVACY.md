@@ -14,7 +14,7 @@ destination you control: your own phone.
 |---|---|---|
 | Your disarm passcode, if you set one | macOS Keychain, this device only | Stored as a salted PBKDF2-SHA256 hash. The passcode itself is never written down and cannot be recovered from what is stored. |
 | Your settings | macOS user defaults | Which triggers and responses are switched on — including whether photographs and phone alerts are enabled — the grace period, and motion sensitivity. |
-| Alarm photographs | `~/Library/Application Support/Yowl/Evidence` | Only if you switch on photographs. Capped at the 40 most recent; older ones are deleted automatically. |
+| Alarm photographs | `~/Library/Application Support/Yowl/Evidence` | Unless you switch photographs off (they are on by default). Capped at the 40 most recent; older ones are deleted automatically. |
 | Your alert link | macOS Keychain, this device only | Only if you switch on phone alerts. |
 
 ## Phone alerts — the only thing that leaves your Mac

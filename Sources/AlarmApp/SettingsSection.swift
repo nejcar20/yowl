@@ -169,9 +169,9 @@ public struct SettingsSection: View {
                             .fixedSize(horizontal: false, vertical: true)
 
                         // Pairing means moving a 32-character secret to a phone.
-                        // Scanning is the only route that needs nothing else set
-                        // up; the topic is shown as well so it can be typed or
-                        // checked against what the phone ended up subscribed to.
+                        // Android scans it straight into the ntfy app; iOS cannot
+                        // open the app from a code, so an iPhone gets the topic
+                        // in full, to type or paste.
                         Picker("Phone", selection: $phone) {
                             ForEach(PairingTarget.allCases) { target in
                                 Text(target.label).tag(target)
@@ -180,24 +180,23 @@ public struct SettingsSection: View {
                         .pickerStyle(.segmented)
                         .labelsHidden()
 
-                        if let code = SubscribeQRCode.image(for: model.pairingPayload(for: phone)) {
-                            HStack(alignment: .top, spacing: 10) {
+                        HStack(alignment: .top, spacing: 10) {
+                            if phone.usesCode,
+                               let code = SubscribeQRCode.image(for: model.pairingPayload(for: phone)) {
                                 Image(nsImage: code)
                                     .resizable()
                                     .interpolation(.none)
                                     .frame(width: 84, height: 84)
                                     .accessibilityLabel("Code that pairs your phone with this Mac")
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(phone.scanOutcome)
-                                        .font(.caption2).foregroundStyle(.secondary)
-                                        .fixedSize(horizontal: false, vertical: true)
-                                        .fixedSize(horizontal: false, vertical: true)
-                                    Text(model.alertTopic)
-                                        .font(.system(.caption2, design: .monospaced))
-                                        .textSelection(.enabled)
-                                        .lineLimit(2)
-                                        .truncationMode(.middle)
-                                }
+                            }
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(phone.instructions)
+                                    .font(.caption2).foregroundStyle(.secondary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                Text(model.alertTopic)
+                                    .font(.system(phone.usesCode ? .caption2 : .callout, design: .monospaced))
+                                    .textSelection(.enabled)
+                                    .fixedSize(horizontal: false, vertical: true)
                             }
                         }
 
