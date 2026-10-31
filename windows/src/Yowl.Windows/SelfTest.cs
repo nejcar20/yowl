@@ -50,6 +50,10 @@ internal static class SelfTest
         Line($"Windows {Environment.OSVersion.Version}, {RuntimeInformation.OSArchitecture}, .NET {Environment.Version}");
         Line("");
 
+        Check("Install", () => AppPackage.IsPackaged
+            ? $"Microsoft Store package, data in {AppPackage.DataDirectory}"
+            : $"plain exe, data in {AppPackage.DataDirectory}");
+
         Check("Secret storage (DPAPI)", () =>
         {
             var directory = Path.Combine(Path.GetTempPath(), "yowl-self-test-" + Guid.NewGuid());

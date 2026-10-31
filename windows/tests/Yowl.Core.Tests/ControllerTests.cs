@@ -379,4 +379,18 @@ public class ControllerTests
         controller.CopyAlertLink();
         Assert.StartsWith("Could not copy", controller.SettingsMessage);
     }
+
+    [Fact]
+    public void AStartAtLoginRefusalSaysWhatToDo()
+    {
+        var controller = Controller();
+        _login.RefusedBecause = "Turn Yowl on in Windows Settings.";
+        controller.SetLaunchAtLogin(true);
+        Assert.False(controller.LaunchAtLogin);
+        Assert.Equal("Turn Yowl on in Windows Settings.", controller.SettingsMessage);
+        _login.RefusedBecause = null;
+        _login.Fail = true;
+        controller.SetLaunchAtLogin(true);
+        Assert.Equal("Could not change whether Yowl starts at login.", controller.SettingsMessage);
+    }
 }

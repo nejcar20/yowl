@@ -449,6 +449,11 @@ public sealed class YowlController
         {
             _deps.LoginItem.SetEnabled(enabled);
         }
+        catch (InvalidOperationException e)
+        {
+            // Says what to do, such as where Windows lets the user turn it back on.
+            SettingsMessage = e.Message;
+        }
         catch (Exception)
         {
             SettingsMessage = "Could not change whether Yowl starts at login.";

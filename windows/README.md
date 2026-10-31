@@ -27,6 +27,27 @@ artifact on every push that touches `windows/`.
 
 `scripts/make-ico.sh` regenerates the icon from the Mac icon's drawing code.
 
+## Microsoft Store package
+
+`scripts/package-msix.ps1` turns the two published exes into
+`out/store/Yowl_<version>.msixbundle` and a `.msixupload` for Partner Center.
+CI runs it on every build (artifact `Yowl-store`). It is not signed; the Store
+signs what it publishes.
+
+- `packaging/Package.appxmanifest` is the template. Its identity
+  (`$(IdentityName)`, `$(Publisher)`, `$(PublisherDisplayName)`) comes from
+  Partner Center → the app → *Product identity*. Set them as repository
+  variables `MSIX_IDENTITY_NAME`, `MSIX_PUBLISHER` and
+  `MSIX_PUBLISHER_DISPLAY_NAME`; without them CI builds a placeholder package
+  the Store will not accept.
+- The version is `Directory.Build.props`' `Version` plus `.0`. Each upload
+  needs a higher one.
+- `scripts/make-store-assets.sh` regenerates `packaging/Images` from the Mac
+  icon's drawing code.
+- Packaged, Yowl keeps its data in the package's own LocalState folder and
+  uses the manifest's startup task for *Start at login* instead of the Run
+  key; `Yowl.exe --self-test` says which mode it is in.
+
 ## Testing on a Windows laptop
 
 1. Get `Yowl.exe`: from the latest **Windows** run under the repo's Actions tab

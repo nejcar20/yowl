@@ -29,7 +29,7 @@ internal static class Program
         SynchronizationContext.SetSynchronizationContext(new WindowsFormsSynchronizationContext());
         UiThread.Capture();
 
-        var dataDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Yowl");
+        var dataDirectory = AppPackage.DataDirectory;
         var secrets = new DpapiSecretStore(Path.Combine(dataDirectory, "Secrets"));
         var audio = new SpeakerAudio();
         var camera = new WinRtCamera();
@@ -53,7 +53,7 @@ internal static class Program
             ScreenUnlocks: new SessionUnlockObserver(),
             SystemSleep: new SystemSleepObserver(),
             LidSleep: new LidActionSuppressor(dataDirectory),
-            LoginItem: new RunKeyLoginItem()));
+            LoginItem: AppPackage.IsPackaged ? new StartupTaskLoginItem() : new RunKeyLoginItem()));
 
         // Every way out puts the user's audio and lid setting back. SessionEnded,
         // not SessionEnding: Ending fires while Windows is still asking, so a

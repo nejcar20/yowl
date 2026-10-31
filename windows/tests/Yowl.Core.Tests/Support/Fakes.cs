@@ -292,9 +292,12 @@ public sealed class FakeLoginItem : ILoginItem
 {
     public bool IsEnabled { get; private set; }
     public bool Fail { get; set; }
+    /// <summary>Set to refuse with an explanation, as the Store build's startup task does.</summary>
+    public string? RefusedBecause { get; set; }
     public void SetEnabled(bool enabled)
     {
         if (Fail) throw new UnauthorizedAccessException();
+        if (RefusedBecause is not null) throw new InvalidOperationException(RefusedBecause);
         IsEnabled = enabled;
     }
 }

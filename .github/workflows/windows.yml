@@ -59,6 +59,28 @@ jobs:
           Get-Content "$env:TEMP/yowl-self-test.txt"
           "exit code: $($p.ExitCode)"
 
+      # The Store upload. Unsigned: the Store signs what it publishes. The
+      # identity comes from Partner Center via repository variables; without
+      # them this still builds, with placeholder values the Store would refuse.
+      - name: Build the Microsoft Store package
+        shell: pwsh
+        env:
+          MSIX_IDENTITY_NAME: ${{ vars.MSIX_IDENTITY_NAME }}
+          MSIX_PUBLISHER: ${{ vars.MSIX_PUBLISHER }}
+          MSIX_PUBLISHER_DISPLAY_NAME: ${{ vars.MSIX_PUBLISHER_DISPLAY_NAME }}
+        run: |
+          ./scripts/package-msix.ps1 -IdentityName $env:MSIX_IDENTITY_NAME `
+            -Publisher $env:MSIX_PUBLISHER -PublisherDisplayName $env:MSIX_PUBLISHER_DISPLAY_NAME
+
+      - name: Upload the Store package
+        uses: actions/upload-artifact@v4
+        with:
+          name: Yowl-store
+          path: |
+            windows/out/store/*.msixupload
+            windows/out/store/*.msixbundle
+          retention-days: 30
+
       - name: Upload Yowl.exe
         uses: actions/upload-artifact@v4
         with:
