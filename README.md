@@ -4,7 +4,8 @@ A menu-bar alarm that makes stealing your MacBook loud.
 
 Free and open source (MIT). No accounts, no analytics, no servers.
 
-**[Download Yowl](https://dontstealmylaptop.com)** ·
+**[Download for Mac](https://dontstealmylaptop.com)** ·
+**[Get it for Windows](https://apps.microsoft.com/detail/9NM387X4WVV2)** ·
 [Watch the 10-second demo](docs/demo.mp4) ·
 [See how it works](https://dontstealmylaptop.com/demo.html)
 
@@ -23,8 +24,8 @@ in front of it. Only unlocking your Mac stops it.
 
 ## Settings and phone alerts
 
-Choose the alarm responses in Settings. Photographs and phone alerts are
-optional; enable phone alerts and pair the free ntfy app to receive alarm
+Choose the alarm responses in Settings. Everything except phone alerts is on
+by default; enable phone alerts and pair the free ntfy app to receive alarm
 notifications and photos on iPhone or Android.
 
 | Yowl settings | Phone alerts via ntfy |
@@ -111,6 +112,25 @@ See [PRIVACY.md](docs/PRIVACY.md).
   armed, but ⌘Q and Force Quit still work. Your audio settings are restored
   either way.
 - **A thief can hold the power button.** Nothing in userspace prevents that.
+
+## Windows
+
+Yowl also runs on Windows 10 (2004 or later) and 11 laptops, x64 and ARM64,
+from the notification area instead of the menu bar. Get it from the
+[Microsoft Store](https://apps.microsoft.com/detail/9NM387X4WVV2) (the listing
+goes live once Microsoft finishes reviewing it). The source, build steps and a
+testing walk are in [`windows/`](windows/README.md).
+
+It does the same things — charger and movement triggers, a siren forced to the
+built-in speakers, screen lock, photographs, ntfy alerts — with these
+differences:
+
+- **No lid-angle trigger.** Windows laptops have no hinge sensor to read.
+- **Closing the lid keeps it screaming, without a password.** While the siren
+  sounds, Yowl sets the lid-close action to *Do nothing* for the time you
+  chose, then puts your setting back.
+- **Headphones on a combined jack** can take the siren on some Realtek laptops,
+  where speakers and jack are one audio device.
 
 ## Install
 
