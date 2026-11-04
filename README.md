@@ -117,8 +117,7 @@ See [PRIVACY.md](docs/PRIVACY.md).
 
 Yowl also runs on Windows 10 (2004 or later) and 11 laptops, x64 and ARM64,
 from the notification area instead of the menu bar. Get it from the
-[Microsoft Store](https://apps.microsoft.com/detail/9NM387X4WVV2) (the listing
-goes live once Microsoft finishes reviewing it). The source, build steps and a
+[Microsoft Store](https://apps.microsoft.com/detail/9NM387X4WVV2). The source, build steps and a
 testing walk are in [`windows/`](windows/README.md).
 
 It does the same things — charger and movement triggers, a siren forced to the
