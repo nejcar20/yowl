@@ -1,6 +1,6 @@
-# Yowl — MacBook theft alarm
+# Yowl — laptop theft alarm
 
-A menu-bar alarm that makes stealing your MacBook loud.
+An alarm that makes stealing your laptop loud, for Mac and Windows.
 
 Free and open source (MIT). No accounts, no analytics, no servers.
 
