@@ -1,0 +1,41 @@
+name: CI
+
+# The Mac app. Windows-only and website-only changes are left to their own
+# workflow, so they do not spend a macOS runner.
+on:
+  push:
+    paths-ignore: ["windows/**", "docs/**"]
+  pull_request:
+    paths-ignore: ["windows/**", "docs/**"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    name: Build and test
+    runs-on: macos-26
+    timeout-minutes: 20
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Show toolchain
+        run: |
+          xcodebuild -version
+          swift --version
+
+      - name: Build release executable
+        run: swift build --configuration release --product Yowl
+
+      - name: Run tests
+        run: swift test

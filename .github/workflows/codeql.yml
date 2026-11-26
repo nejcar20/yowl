@@ -1,0 +1,56 @@
+name: CodeQL
+
+# Static security analysis. Findings appear under Security → Code scanning.
+# Swift is not scanned: CodeQL's Swift support trails the Swift 6.3 toolchain
+# this project builds with.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "17 4 * * 1"   # Mondays, so new CodeQL queries reach old code too
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: codeql-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # The Windows app targets net10.0-windows, which does not build on
+          # Linux; without a build CodeQL reads the C# source directly.
+          - language: csharp
+            build-mode: none
+          # The workflows themselves: script injection, over-broad tokens.
+          - language: actions
+            build-mode: none
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+
+      - name: Analyze
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: /language:${{ matrix.language }}

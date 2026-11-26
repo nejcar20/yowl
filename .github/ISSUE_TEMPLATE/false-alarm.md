@@ -6,8 +6,7 @@ labels: false-alarm
 
 This is the failure that matters most, so thank you for reporting it.
 
-**Which trigger fired?** (the menu bar said "ALARM" — was it charger, movement,
-or lid?)
+**Which trigger fired?** (was it charger, movement, or lid?)
 
 **What was actually happening?**
 
@@ -17,4 +16,6 @@ is a known weakness: the detector cannot tell a passer-by from the machine being
 moved. Open Settings → Test sensitivity, wave your hand in front of the camera
 without touching the laptop, and tell me what the number does.
 
-**Your Mac and macOS version:**
+**Mac or Windows? Model and OS version:**
+
+**Yowl version:**

@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Report a security problem privately
+    url: https://github.com/nejcar20/yowl/security/advisories/new
+    about: A way to defeat the alarm, a privacy leak, or anything that gives more access than it should. Please do not open a public issue.

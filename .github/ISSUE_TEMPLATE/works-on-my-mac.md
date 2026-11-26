@@ -1,19 +1,21 @@
 ---
-name: Report that it works (or doesn't) on your Mac
-about: Especially Intel Macs and older macOS
+name: Report that it works (or doesn't) on your laptop
+about: Especially Intel Macs, older macOS, and Windows laptops
 labels: compatibility
 ---
 
-It has only ever been tested on one machine — an Apple Silicon M5 Pro on
-macOS 26.5. Reports from anything else are genuinely useful.
+The Mac app has mostly been tested on an Apple Silicon M5 Pro on macOS 26.5.
+Reports from anything else, and from any Windows laptop, are genuinely useful.
 
-**Mac model and chip:** (Apple menu → About This Mac)
-**macOS version:**
+**Laptop model and chip:** (Mac: Apple menu → About This Mac. Windows:
+Settings → System → About)
+**OS version:**
+**Yowl version:**
 
 **Which of these appeared in Settings?**
 - [ ] Charger unplugged
 - [ ] Laptop is moved
-- [ ] Lid is closed part-way  ← expected to be absent on Intel
+- [ ] Lid is closed part-way  ← expected to be absent on Intel Macs and on Windows
 - [ ] Photograph whoever is there
 - [ ] Send an alert to my phone
 

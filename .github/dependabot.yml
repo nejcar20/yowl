@@ -1,0 +1,19 @@
+# Opens a pull request when a GitHub Action or a Windows NuGet package has a
+# new version or a security fix. Grouped so it is one PR a week, not ten.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
+
+  - package-ecosystem: nuget
+    directory: /windows
+    schedule:
+      interval: weekly
+    groups:
+      nuget:
+        patterns: ["*"]
