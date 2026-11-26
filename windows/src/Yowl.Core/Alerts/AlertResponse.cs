@@ -67,6 +67,13 @@ public sealed class AlertResponse(IAlertTransport transport, IEvidenceStore evid
         catch (AlertTransportException) { }
     }
 
+    /// <summary>
+    /// How far before the alarm a photograph may have been taken and still
+    /// belong to it: the run-up buffer holds about ten seconds, with margin.
+    /// Older ones are an earlier alarm's, usually the owner's own.
+    /// </summary>
+    public static readonly TimeSpan PhotographWindow = TimeSpan.FromSeconds(30);
+
     public Task FireAsync(AlarmContext context)
     {
         // Nowhere to send is a no-op, not a failure.
@@ -76,7 +83,7 @@ public sealed class AlertResponse(IAlertTransport transport, IEvidenceStore evid
         _inFlight = cancellation;
 
         var payload = new AlertPayload("Yowl", Describe(context), AlertUrgency.Critical, context.FiredAt,
-                                       IncludesPhotographs ? evidence.RecentJpegs(3) : []);
+                                       IncludesPhotographs ? evidence.RecentJpegs(3, context.FiredAt - PhotographWindow) : []);
         var transport = _transport;
         // Not awaited by the engine: a slow or dead network must never delay
         // the siren, and a failure must never reach the engine.

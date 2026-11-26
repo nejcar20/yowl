@@ -83,9 +83,41 @@ import Foundation
 /// app's broken rule failed this install. Only Yowl's own file is checked, and
 /// a file that fails is removed rather than left in /etc.
 @Test func theInstallChecksOnlyItsOwnFileAndRollsBack() {
-    let command = SudoersLidSleepSuppressor.installCommand(staged: "/tmp/staged")
+    let command = SudoersLidSleepSuppressor.installCommand(
+        rule: SudoersLidSleepSuppressor.rule(for: "someone"))
     let rule = SudoersLidSleepSuppressor.rulePath
     #expect(command.contains("visudo -c -f '\(rule)'"))
     #expect(command.contains("rm -f '\(rule)'"))
     #expect(command.hasSuffix("visudo -c") == false)
+}
+
+/// The installed rule must be the exact text Yowl generated, carried inside the
+/// root command. Installing a file from the user's temp folder let anything
+/// running as the user swap it during the password prompt and be granted
+/// passwordless root.
+@Test func theInstallCarriesTheExactRuleAndReadsNoUserFile() throws {
+    let rule = SudoersLidSleepSuppressor.rule(for: "someone")
+    let command = SudoersLidSleepSuppressor.installCommand(rule: rule)
+
+    let encoded = try #require(command.firstMatch(of: /printf '%s' '([A-Za-z0-9+\/=]+)'/)?.1)
+    let decoded = try #require(Data(base64Encoded: String(encoded)))
+    #expect(String(decoding: decoded, as: UTF8.self) == rule)
+
+    #expect(command.contains(FileManager.default.temporaryDirectory.path) == false)
+    #expect(command.contains("mktemp"))
+    // The fresh copy is validated before it is installed, not only after.
+    let firstCheck = try #require(command.range(of: "visudo -c -f \"$t\""))
+    let install = try #require(command.range(of: "install -m 0440"))
+    #expect(firstCheck.lowerBound < install.lowerBound)
+}
+
+/// The shell part that writes and checks the rule, run for real without root:
+/// everything up to the install must produce a file visudo accepts.
+@Test func theWrittenRulePassesVisudo() throws {
+    let rule = SudoersLidSleepSuppressor.rule(for: NSUserName())
+    let command = SudoersLidSleepSuppressor.installCommand(rule: rule)
+    let upToInstall = try #require(command.components(separatedBy: " && /usr/bin/install").first)
+    let result = SudoersLidSleepSuppressor.run("/bin/sh", ["-c", upToInstall + " && /bin/cat \"$t\""])
+    #expect(result.status == 0, "\(result.stderr)")
+    #expect(result.output == rule)
 }

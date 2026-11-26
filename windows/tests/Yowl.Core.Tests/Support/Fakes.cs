@@ -207,6 +207,8 @@ public sealed class InMemoryEvidence : IEvidenceStore
     public string? Save(EvidenceItem item) { Saved.Add(item); return $"memory://{Saved.Count}"; }
     public IReadOnlyList<string> AllItems() => Saved.Select((_, i) => $"memory://{i}").ToList();
     public IReadOnlyList<byte[]> RecentJpegs(int limit) => Saved.AsEnumerable().Reverse().Take(limit).Select(i => i.Jpeg).ToList();
+    public IReadOnlyList<byte[]> RecentJpegs(int limit, DateTimeOffset since) =>
+        Saved.AsEnumerable().Reverse().Where(i => i.CapturedAt >= since).Take(limit).Select(i => i.Jpeg).ToList();
     public string DirectoryPath => Path.GetTempPath();
 }
 

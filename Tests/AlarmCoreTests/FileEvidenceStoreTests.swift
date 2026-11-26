@@ -131,3 +131,24 @@ private func item(_ second: Int) -> EvidenceItem {
     double.save(EvidenceItem(jpeg: Data([2]), capturedAt: Date(timeIntervalSince1970: 2), trigger: "m"))
     #expect(double.recentJPEGs(limit: 1) == [Data([2])], "newest first, like the real store")
 }
+
+/// The cut-off is read back from the file name, so it has to survive the real
+/// store's round trip, not just the in-memory double's.
+@Test func theRealStoreFiltersByCaptureTime() throws {
+    let dir = FileManager.default.temporaryDirectory
+        .appendingPathComponent("yowl-since-\(UUID().uuidString)")
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let store = FileEvidenceStore(directory: dir)
+    let now = Date()
+    store.save(EvidenceItem(jpeg: Data([1]), capturedAt: now.addingTimeInterval(-3600), trigger: "power"))
+    store.save(EvidenceItem(jpeg: Data([2]), capturedAt: now.addingTimeInterval(-5), trigger: "power"))
+    store.save(EvidenceItem(jpeg: Data([3]), capturedAt: now, trigger: "power"))
+
+    #expect(store.recentJPEGs(limit: 3, since: now.addingTimeInterval(-30)) == [Data([3]), Data([2])])
+    #expect(store.recentJPEGs(limit: 3, since: now.addingTimeInterval(1)).isEmpty)
+}
+
+@Test func aFileNameThatDoesNotParseCountsAsOld() {
+    #expect(FileEvidenceStore.capturedAt(fileName: "holiday.jpg") == nil)
+    #expect(FileEvidenceStore.capturedAt(fileName: "2026-11-26T10-00-00.123-power.jpg") != nil)
+}

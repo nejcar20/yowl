@@ -204,6 +204,20 @@ public class FileEvidenceStoreTests : IDisposable
         Assert.Equal([[4], [3]], store.RecentJpegs(2));
     }
 
+    /// <summary>The alert's cut-off is read back from the file name, so it must survive the real store.</summary>
+    [Fact]
+    public void ItFiltersByCaptureTime()
+    {
+        var store = new FileEvidenceStore(_directory);
+        var now = DateTimeOffset.Now;
+        store.Save(new EvidenceItem([1], now.AddHours(-1), "power"));
+        store.Save(new EvidenceItem([2], now.AddSeconds(-5), "power"));
+        store.Save(new EvidenceItem([3], now, "power"));
+        Assert.Equal([[3], [2]], store.RecentJpegs(3, now.AddSeconds(-30)));
+        Assert.Empty(store.RecentJpegs(3, now.AddSeconds(1)));
+        Assert.Null(FileEvidenceStore.CapturedAt("holiday.jpg"));
+    }
+
     /// <summary>Two shots in the same second must not overwrite each other.</summary>
     [Fact]
     public void ShotsMillisecondsApartAreBothKept()

@@ -87,7 +87,8 @@ public final class AlertResponse: Response {
                 body: Self.describe(context),
                 urgency: .critical,
                 occurredAt: context.firedAt,
-                images: attachPhotographs ? Self.recentImages(from: evidence) : [])
+                images: attachPhotographs
+                    ? Self.recentImages(from: evidence, firedAt: context.firedAt) : [])
             try? await transport.send(payload)
         }
     }
@@ -106,9 +107,16 @@ public final class AlertResponse: Response {
         }
     }
 
+    /// How far before the alarm a photograph may have been taken and still
+    /// belong to it: the camera's run-up buffer holds about ten seconds, and
+    /// this leaves room for that with margin.
+    static let photographWindow: TimeInterval = 30
+
     /// Sends at most a few photographs: enough to identify someone, few enough
-    /// that a phone notification is not a slideshow.
-    static func recentImages(from store: EvidenceStoring, limit: Int = 3) -> [Data] {
-        store.recentJPEGs(limit: limit)
+    /// that a phone notification is not a slideshow. Only ones from this alarm:
+    /// when the camera produced nothing this time, the newest files on disk
+    /// were an earlier alarm's, and they went to ntfy.sh instead.
+    static func recentImages(from store: EvidenceStoring, firedAt: Date, limit: Int = 3) -> [Data] {
+        store.recentJPEGs(limit: limit, since: firedAt.addingTimeInterval(-photographWindow))
     }
 }

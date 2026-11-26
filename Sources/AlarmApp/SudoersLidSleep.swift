@@ -57,34 +57,45 @@ public final class SudoersLidSleepSuppressor: LidSleepSuppressing {
     /// the very dialog it needs to present, so nothing appears and the install
     /// silently does not happen.
     public func install() async throws {
-        let user = NSUserName()
-        let staged = FileManager.default.temporaryDirectory
-            .appendingPathComponent("yowl-sudoers")
-        try Self.rule(for: user).write(to: staged, atomically: true, encoding: .utf8)
+        let rule = Self.rule(for: NSUserName())
 
-        // Validated before it is anywhere near /etc. A malformed sudoers file
-        // can lock a person out of sudo entirely, so this is checked first and
-        // checked again after installing.
-        guard Self.shell("/usr/sbin/visudo", ["-c", "-f", staged.path]) != nil else {
-            throw LidHelperError.invalidRule
-        }
+        // Validated before the admin prompt, so a malformed rule fails with a
+        // clear error instead of a password request. This copy is only checked,
+        // never installed: see `installCommand`.
+        let check = FileManager.default.temporaryDirectory
+            .appendingPathComponent("yowl-sudoers-check-\(UUID().uuidString)")
+        try rule.write(to: check, atomically: true, encoding: .utf8)
+        let valid = Self.shell("/usr/sbin/visudo", ["-c", "-f", check.path]) != nil
+        try? FileManager.default.removeItem(at: check)
+        guard valid else { throw LidHelperError.invalidRule }
 
-        let command = Self.installCommand(staged: staged.path)
+        let command = Self.installCommand(rule: rule)
         let result = await Task.detached { Self.adminShell(command) }.value
-        try? FileManager.default.removeItem(at: staged)
         guard result.output != nil else {
             log.error("helper install failed (\(result.status)): \(result.stderr, privacy: .public)")
             throw Self.adminFailure(from: result.stderr)
         }
     }
 
-    /// Checks only Yowl's own file once it is in place. A bare `visudo -c`
-    /// checks every file in sudoers.d, so someone else's broken rule failed
-    /// this install with ours perfectly valid. On failure the file is removed
-    /// again: a rule that does not pass visudo must not be left in /etc.
-    nonisolated static func installCommand(staged: String) -> String {
-        "install -m 0440 -o root -g wheel '\(staged)' '\(rulePath)'"
-            + " && { /usr/sbin/visudo -c -f '\(rulePath)' || { rm -f '\(rulePath)'; exit 1; }; }"
+    /// The root shell writes the rule itself, from text carried inside the
+    /// command, into a temporary file only root can write. It used to install
+    /// a file staged in the user's temp folder, and anything running as the
+    /// user could swap that file during the password prompt — turning an
+    /// admin password given for two pmset commands into passwordless root.
+    ///
+    /// The rule travels base64-encoded so no character in it can break out of
+    /// the shell quoting. Once in place, only Yowl's own file is checked: a
+    /// bare `visudo -c` checks every file in sudoers.d, so someone else's
+    /// broken rule failed this install with ours valid (issue #1). A rule that
+    /// does not pass visudo is removed again, never left in /etc.
+    nonisolated static func installCommand(rule: String) -> String {
+        let encoded = Data(rule.utf8).base64EncodedString()
+        return "t=$(/usr/bin/mktemp /tmp/yowl-sudoers.XXXXXX) || exit 1; "
+            + "trap '/bin/rm -f \"$t\"' EXIT; "
+            + "/usr/bin/printf '%s' '\(encoded)' | /usr/bin/base64 -D > \"$t\""
+            + " && /usr/sbin/visudo -c -f \"$t\" >/dev/null"
+            + " && /usr/bin/install -m 0440 -o root -g wheel \"$t\" '\(rulePath)'"
+            + " && { /usr/sbin/visudo -c -f '\(rulePath)' || { /bin/rm -f '\(rulePath)'; exit 1; }; }"
     }
 
     /// Tells a cancelled prompt apart from a command that failed after the

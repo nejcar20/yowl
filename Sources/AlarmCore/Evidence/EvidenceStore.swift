@@ -20,6 +20,11 @@ public protocol EvidenceStoring: AnyObject {
     func allItems() -> [URL]
     /// The newest photographs, for an alert to attach.
     func recentJPEGs(limit: Int) -> [Data]
+    /// The newest photographs captured at or after `since`, newest first. What
+    /// an alert attaches: without the cut-off, an alarm whose camera produced
+    /// nothing sent the photos from an earlier alarm — usually the owner's own
+    /// false alarm — to a third-party server.
+    func recentJPEGs(limit: Int, since: Date) -> [Data]
     /// Where the photographs live, so the app can show the user.
     var directoryURL: URL { get }
 }
@@ -48,11 +53,7 @@ public final class FileEvidenceStore: EvidenceStoring {
         // frame and the first live shot landed on the same filename, so one
         // photograph was silently overwritten on roughly half of all firings --
         // the same defect as before, one level down.
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd'T'HH-mm-ss.SSS"
-        formatter.timeZone = TimeZone(identifier: "UTC")
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        let stamp = formatter.string(from: item.capturedAt)
+        let stamp = Self.stampFormatter.string(from: item.capturedAt)
         let url = directory.appendingPathComponent("\(stamp)-\(item.trigger).jpg")
         do {
             try item.jpeg.write(to: url, options: .atomic)
@@ -85,6 +86,29 @@ public final class FileEvidenceStore: EvidenceStoring {
         allItems().prefix(limit).compactMap { try? Data(contentsOf: $0) }
     }
 
+    public func recentJPEGs(limit: Int, since: Date) -> [Data] {
+        allItems()
+            .filter { (Self.capturedAt(fileName: $0.lastPathComponent) ?? .distantPast) >= since }
+            .prefix(limit)
+            .compactMap { try? Data(contentsOf: $0) }
+    }
+
+    /// Reads the capture time back out of the name `save` gave the file. A
+    /// name that does not parse counts as old, so it is never attached.
+    static func capturedAt(fileName: String) -> Date? {
+        guard fileName.count >= stampLength else { return nil }
+        return stampFormatter.date(from: String(fileName.prefix(stampLength)))
+    }
+
+    private static let stampLength = "yyyy-MM-ddTHH-mm-ss.SSS".count
+    private static let stampFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd'T'HH-mm-ss.SSS"
+        formatter.timeZone = TimeZone(identifier: "UTC")
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        return formatter
+    }()
+
     public var directoryURL: URL { directory }
 }
 
@@ -113,6 +137,10 @@ public final class InMemoryEvidenceStore: EvidenceStoring {
     /// the shipped path.
     public func recentJPEGs(limit: Int) -> [Data] {
         saved.reversed().prefix(limit).map(\.jpeg)
+    }
+
+    public func recentJPEGs(limit: Int, since: Date) -> [Data] {
+        saved.reversed().filter { $0.capturedAt >= since }.prefix(limit).map(\.jpeg)
     }
 
     public let directoryURL = URL(fileURLWithPath: NSTemporaryDirectory())

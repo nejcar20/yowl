@@ -75,6 +75,24 @@ public class AlertResponseTests
         Assert.Equal(3, _http.Requests.Count);
     }
 
+    /// <summary>
+    /// An alarm whose camera produced nothing used to attach the newest files
+    /// on disk — an earlier alarm's — and send them to ntfy.sh.
+    /// </summary>
+    [Fact]
+    public async Task PhotographsFromAnEarlierAlarmAreNotAttached()
+    {
+        var now = DateTimeOffset.Now;
+        _evidence.Save(new EvidenceItem([1], now.AddHours(-1), "power"));
+        _evidence.Save(new EvidenceItem([2], now.AddSeconds(-9), "motion"));
+        var alert = new AlertResponse(new NtfyTransport("t", _http), _evidence)
+            { IsEnabled = true, IncludesPhotographs = true };
+        await alert.FireAsync(new AlarmContext(TriggerId.Motion, now));
+        await alert.LastSend;
+        Assert.Equal(2, _http.Requests.Count);   // the message, then the run-up photo only
+        Assert.Equal(new byte[] { 2 }, _http.Requests[1].Body);
+    }
+
     [Fact]
     public async Task ANetworkFailureNeverReachesTheEngine()
     {

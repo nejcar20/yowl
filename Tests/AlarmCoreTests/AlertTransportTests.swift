@@ -114,6 +114,40 @@ private func payload(images: Int = 1) -> AlertPayload {
     #expect(http.requests.count == 2, "message plus one attachment")
 }
 
+// An alarm whose camera produced nothing used to attach the newest files on
+// disk -- an earlier alarm's, usually the owner's own false alarm -- and send
+// them to ntfy.sh.
+@Test func photographsFromAnEarlierAlarmAreNotAttached() async throws {
+    let http = FakeHTTPClient()
+    let evidence = InMemoryEvidenceStore()
+    let now = Date()
+    evidence.save(EvidenceItem(jpeg: Data([1]), capturedAt: now.addingTimeInterval(-3600),
+                               trigger: "power"))
+    let response = AlertResponse(transport: NtfyTransport(topic: "t", http: http),
+                                 evidence: evidence)
+    response.includesPhotographs = true
+    await response.fire(context: AlarmContext(trigger: TriggerID("power"), firedAt: now))
+    try await Task.sleep(for: .milliseconds(80))
+    #expect(http.requests.count == 1, "message only: the photo belongs to another alarm")
+}
+
+// The run-up buffer is the most useful shot, and it is from before the alarm.
+@Test func photographsFromTheRunUpAreAttached() async throws {
+    let http = FakeHTTPClient()
+    let evidence = InMemoryEvidenceStore()
+    let now = Date()
+    evidence.save(EvidenceItem(jpeg: Data([1]), capturedAt: now.addingTimeInterval(-3600),
+                               trigger: "power"))
+    evidence.save(EvidenceItem(jpeg: Data([2]), capturedAt: now.addingTimeInterval(-9),
+                               trigger: "motion"))
+    let response = AlertResponse(transport: NtfyTransport(topic: "t", http: http),
+                                 evidence: evidence)
+    response.includesPhotographs = true
+    await response.fire(context: AlarmContext(trigger: TriggerID("motion"), firedAt: now))
+    try await Task.sleep(for: .milliseconds(80))
+    #expect(http.requests.count == 2, "message plus the run-up photo only")
+}
+
 @Test func theTransportIsUnconfiguredWithoutATopic() {
     #expect(NtfyTransport(topic: "", http: FakeHTTPClient()).isConfigured == false)
     #expect(NtfyTransport(topic: "abc", http: FakeHTTPClient()).isConfigured == true)

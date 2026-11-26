@@ -16,6 +16,13 @@ public interface IEvidenceStore
     /// <summary>The newest photographs, for an alert to attach.</summary>
     IReadOnlyList<byte[]> RecentJpegs(int limit);
 
+    /// <summary>
+    /// The newest photographs captured at or after <paramref name="since"/>,
+    /// newest first. What an alert attaches: without the cut-off, an alarm
+    /// whose camera produced nothing sent an earlier alarm's photos.
+    /// </summary>
+    IReadOnlyList<byte[]> RecentJpegs(int limit, DateTimeOffset since);
+
     string DirectoryPath { get; }
 }
 
@@ -41,7 +48,7 @@ public sealed class FileEvidenceStore : IEvidenceStore
     {
         // Milliseconds, not seconds. At one-second resolution the run-up's last
         // frame and the first live shot shared a filename and one overwrote the other.
-        var stamp = item.CapturedAt.UtcDateTime.ToString("yyyy-MM-dd'T'HH-mm-ss.fff", CultureInfo.InvariantCulture);
+        var stamp = item.CapturedAt.UtcDateTime.ToString(StampFormat, CultureInfo.InvariantCulture);
         var path = Path.Combine(DirectoryPath, $"{stamp}-{item.Trigger}.jpg");
         try
         {
@@ -82,10 +89,30 @@ public sealed class FileEvidenceStore : IEvidenceStore
         }
     }
 
-    public IReadOnlyList<byte[]> RecentJpegs(int limit)
+    public IReadOnlyList<byte[]> RecentJpegs(int limit) => Read(AllItems().Take(limit));
+
+    public IReadOnlyList<byte[]> RecentJpegs(int limit, DateTimeOffset since) =>
+        Read(AllItems().Where(p => (CapturedAt(Path.GetFileName(p)) ?? DateTimeOffset.MinValue) >= since)
+                       .Take(limit));
+
+    private const string StampFormat = "yyyy-MM-dd'T'HH-mm-ss.fff";
+    private const int StampLength = 23;   // "2026-11-26T10-00-00.123"
+
+    /// <summary>
+    /// Reads the capture time back out of the name <see cref="Save"/> gave the
+    /// file. A name that does not parse counts as old, so it is never attached.
+    /// </summary>
+    public static DateTimeOffset? CapturedAt(string fileName) =>
+        fileName.Length >= StampLength
+        && DateTime.TryParseExact(fileName[..StampLength], StampFormat, CultureInfo.InvariantCulture,
+                                  DateTimeStyles.AdjustToUniversal | DateTimeStyles.AssumeUniversal, out var utc)
+            ? new DateTimeOffset(utc, TimeSpan.Zero)
+            : null;
+
+    private static List<byte[]> Read(IEnumerable<string> paths)
     {
         var result = new List<byte[]>();
-        foreach (var path in AllItems().Take(limit))
+        foreach (var path in paths)
         {
             try { result.Add(File.ReadAllBytes(path)); }
             catch (IOException) { }
