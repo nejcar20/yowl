@@ -30,9 +30,10 @@ When it is on, and the alarm fires, Yowl sends to **ntfy.sh**
 (operated by Philipp Heckel, [ntfy.sh](https://ntfy.sh)):
 
 - A short message saying which trigger fired and when.
-- Up to three of the most recent alarm photographs — only if you have also
-  switched on "Photograph whoever is there". With photographs off, alerts carry
-  the message and nothing else.
+- Up to three photographs from that alarm, including the seconds just before
+  it — only if you have also switched on "Photograph whoever is there".
+  Photographs from earlier alarms are never attached. With photographs off,
+  alerts carry the message and nothing else.
 
 **How your alerts are kept private.** Your alerts go to a private topic whose
 name is 128 bits of randomness generated on your Mac. That name is the access
@@ -44,9 +45,9 @@ receiving anything further from your Mac.
 **ntfy.sh is not storage.** Attachments are deleted after roughly three hours
 and messages after twelve. The copies on your Mac are the durable ones.
 
-**If you would rather not use a third party**, you can run your own ntfy server
-— it is open source and self-hostable — or leave phone alerts off entirely and
-use the photographs saved on your Mac.
+**If you would rather not use a third party**, leave phone alerts off and use
+the photographs saved on your Mac. Yowl currently always sends to ntfy.sh;
+choosing your own ntfy server is not yet a setting.
 
 ## The camera
 

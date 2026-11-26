@@ -1,5 +1,7 @@
 # Yowl — laptop theft alarm
 
+[![CI](https://github.com/nejcar20/yowl/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/nejcar20/yowl/actions/workflows/ci.yml)
+
 An alarm that makes stealing your laptop loud, for Mac and Windows.
 
 Free and open source (MIT). No accounts, no analytics, no servers.
@@ -20,7 +22,7 @@ Free and open source (MIT). No accounts, no analytics, no servers.
 Arm it when you leave your laptop on a café table. If someone unplugs the
 charger, closes the lid, or picks the machine up, it screams at full volume —
 over mute, over headphones — locks the screen, and photographs whoever is
-in front of it. Only unlocking your Mac stops it.
+in front of it. Unlocking your Mac is what stops it.
 
 ## Settings and phone alerts
 
@@ -111,6 +113,9 @@ See [PRIVACY.md](docs/PRIVACY.md).
 - **Quitting the app stops the alarm.** The Quit menu item is disabled while
   armed, but ⌘Q and Force Quit still work. Your audio settings are restored
   either way.
+- **Arming does not lock the screen.** Until the alarm fires, someone at the
+  keyboard of an armed, unlocked Mac can quit Yowl. Lock the screen yourself
+  (⌃⌘Q) when you walk away.
 - **A thief can hold the power button.** Nothing in userspace prevents that.
 
 ## Windows
@@ -149,7 +154,7 @@ Tools) for Swift 6.2+. Built and tested on Swift 6.3.3 / Xcode 26.6.
 ```bash
 git clone https://github.com/nejcar20/yowl.git
 cd yowl
-swift test                  # 270 tests, ~30s the first time
+swift test                  # 300+ tests, ~30s the first time
 ./Scripts/make-bundle.sh    # produces build/Yowl.app
 open build/Yowl.app
 ```
@@ -227,7 +232,7 @@ Bug reports are more useful than features right now. In particular:
 - **Did the alarm ever fire when it should not have?** That is the failure that
   matters most.
 
-The test suite is the contribution guide: `swift test` runs 241 tests, and
+The test suite is the contribution guide: `swift test` runs over 300 tests, and
 anything touching a trigger, a response, or the privacy-facing behaviour needs
 one that fails when the change is reverted. Several bugs in this codebase
 shipped behind tests that passed against broken code, so that bar is deliberate.

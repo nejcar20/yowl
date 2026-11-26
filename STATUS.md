@@ -1,93 +1,58 @@
 # Where things stand
 
-_3 September 2026_
+_26 November 2026_
 
-Everything is merged to `main`. 233 tests, clean build, app built at
-`build/Yowl.app`.
+- **Mac:** 1.3.2 is released, signed and notarised: [GitHub
+  releases](https://github.com/nejcar20/yowl/releases) and
+  `brew install --cask nejcar20/tap/yowl`. Cut releases with
+  `./Scripts/release.sh <version>`.
+- **Windows:** live in the [Microsoft
+  Store](https://apps.microsoft.com/detail/9NM387X4WVV2). The package comes from
+  the `Windows` workflow. Store listing text is edited in Partner Center; the
+  manifest description only seeds it.
+- **Unreleased on `main`:** see [CHANGELOG.md](CHANGELOG.md).
 
-## What works
+## Open issues from the November 2026 review
 
-| | |
-|---|---|
-| Charger unplugged → alarm | ✅ |
-| Laptop moved (camera) → alarm | ✅ verified on real hardware |
-| Lid closed part-way → alarm | ✅ sensor verified, threshold 30° |
-| Siren at forced max volume, over mute and headphones | ✅ |
-| Screen lock | ✅ |
-| Photographs, incl. the 10s *before* the alarm | ✅ |
-| Push to phone with photos | ✅ verified against live ntfy |
-| Settings, all opt-in, frozen while armed | ✅ |
-| Icon, privacy policy, README, release pipeline | ✅ |
+Ordered by how much each one helps a thief or causes a missed alarm.
 
-## Two things block shipping, both yours
+### Mac
+1. **Lid shut during the grace period gives no alarm.** Sleep is held off only
+   while firing (`AppModel.swift`, `updateLidSleepHold` and the sleep deferrer),
+   and the grace timer stops while asleep. Fire at once when sleep begins
+   during grace.
+2. **`SudoersLidSleepSuppressor.isAvailable` runs `sudo pmset disablesleep 0`**
+   on the main thread on every state change, before the siren starts, and
+   drops any active hold. Replace it with `sudo -n -l …` run off the main thread
+   and cached.
+3. **Disarm leaves the built-in speakers at 100 %** when the default device was
+   headphones. Save and restore the built-in device's volume and mute too.
+4. **An armed Mac is unlocked**, and `com.apple.screenIsUnlocked` can be posted
+   by any process. Option to lock on arm, and only accept an unlock after a lock
+   has been seen.
+5. **Crash or logout mid-alarm leaves state behind**: the forced volume is only
+   in memory, and `applicationWillTerminate` does not release `disablesleep`.
+6. The hold file is in shared `/tmp` (`/tmp/.yowl-hold-until`). Move it to the
+   user's temp folder.
+7. Camera loss while armed is silent: no frame-age watchdog.
+8. `SleepDeferrer.releasePendingSleep()` has no caller.
 
-1. **Developer ID certificate.** Xcode → Settings → Accounts → Manage
-   Certificates → **+** → *Developer ID Application*. The "Apple Development"
-   cert we build with cannot be notarised, so downloaders would see
-   "the developer cannot be verified".
-
-2. **Notarisation credentials.** App-specific password from appleid.apple.com,
-   then:
-   ```
-   xcrun notarytool store-credentials yowl \
-     --apple-id <your-apple-id> --team-id <INDIGO-LABS-TEAM-ID> --password <password>
-   ```
-
-Then `./Scripts/release.sh 1.0.0` does the rest and hands you a notarised DMG.
-It checks both prerequisites first and tells you exactly what is missing.
-
-## Verified end to end
-
-The full chain — arm, trigger, siren, screen lock, photographs, push to phone —
-was run on real hardware on 4 September 2026 and worked. See
-[docs/ACCEPTANCE.md](docs/ACCEPTANCE.md) for what that does and does not
-establish.
-
-## What is still unverified
-
-**The clamshell behaviour.** The probe has never been run, so whether the alarm
-survives the lid closing is unknown — do not claim lid-closed protection until
-it is. To check:
-
-```
-/tmp/clamshell-spike        # then unplug, close the lid 30s, reopen
-awk '{print $3}' ~/clamshell-spike.log
-```
-
-Gaps in the ticks mean macOS slept through it.
-
-**A café rather than a desk.** Motion detection is defeated by repetitive
-backgrounds. The sensitivity readout shows this in seconds at any given table.
-
-The original acceptance walk, for reference:
-
-1. Settings → turn **Charger unplugged** back on (it is currently off in your
-   stored preferences from when you were trying the toggles)
-2. Turn on **Photograph whoever is there**, grant the camera prompt
-3. Turn on **Send an alert to my phone** → **Copy my link** → open on your
-   phone → **Send test**
-4. Plug in the charger, **Arm**, pull the charger
-
-That should give you: siren, locked screen, photos on disk, push with images.
-
-## Known limitations, all documented in the README
-
-- Repetitive backgrounds (blinds, tiles, brick) defeat motion detection — it
-  fires on passers-by there. The sensitivity test in Settings shows this in
-  seconds at your actual table.
-- ⌘Q and Force Quit still stop the alarm. The Quit menu item is disabled while
-  armed; the keyboard path is not. Audio is restored either way.
-- No location capture. It would need a third permission prompt and another
-  privacy-policy rewrite, so it was left for you to decide.
-- No Wi-Fi trigger. Two implementations were built and both were worse than
-  nothing — one fired on stationary laptops, the other went dead after a single
-  disarm. Cut deliberately.
-- No retry if an alert fails to send.
-- The app target has no test target, so `AppModel` wiring is verified by reading.
-  That gap is behind most of what the reviews found.
+### Windows
+1. **No lid trigger**, and the lid action is only overridden while sounding, so
+   shutting the lid while armed sleeps the laptop. Use
+   `GUID_LIDSWITCH_STATE_CHANGE` and hold from arming.
+2. **One throwing response stops the rest** (`AlarmEngine.FireResponsesAsync`),
+   and there is no `Application.ThreadException` handler.
+3. The power and sleep buttons, and Shut down on the lock screen, are not
+   handled.
+4. The lid action is not restored after a hard power-off unless Yowl is
+   started again.
+5. Per-app volume in the Volume Mixer can mute the siren.
+6. Camera loss or a privacy shutter while armed is silent.
+7. The camera reopen blocks the UI thread with no timeout (`WinRtCamera.cs`).
 
 ## If you change the photo or alert behaviour
 
-`docs/PRIVACY.md` makes specific factual claims and ships inside the DMG. It is
-currently accurate. Anything that changes what leaves the Mac must change it in
-the same commit.
+`docs/PRIVACY.md` makes specific factual claims and ships inside the DMG.
+Anything that changes what leaves the machine must change it in the same
+commit.
