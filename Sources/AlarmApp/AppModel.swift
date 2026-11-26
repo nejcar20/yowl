@@ -201,10 +201,10 @@ public final class AppModel: ObservableObject {
     /// Holds the Mac awake while the siren is going, so a closed lid does not
     /// silence it, and lets it sleep again the instant the alarm ends.
     ///
-    /// The hold lapses on its own after a minute, so the renewal loop is what
-    /// keeps it alive — which means a crash, a force quit or a stolen machine
-    /// all end with a Mac that can sleep normally again. Releasing is therefore
-    /// the safe default and holding is the thing that must keep being earned.
+    /// The hold lapses on its own after the chosen time, and a watchdog releases
+    /// it if the app dies — so a crash, a force quit or a stolen machine all end
+    /// with a Mac that can sleep normally again. Releasing is therefore the safe
+    /// default and holding is the thing that must keep being earned.
     private func updateLidSleepHold(for newState: AlarmState) {
         lidHoldTask?.cancel()
         lidHoldTask = nil
@@ -374,6 +374,10 @@ public final class AppModel: ObservableObject {
         screenLockEnabled = lock.isActive
         refreshPasscodeRequirement()
         keepsAudibleWithLidClosed = dependencies.lidSleep.isAvailable
+        // A hold left by a previous run that died along with its watchdog — a
+        // logout or a forced power-off — would otherwise keep this Mac from
+        // sleeping until the next alarm happened to release it.
+        Task { [lidSleep = dependencies.lidSleep] in await lidSleep.release() }
         // The owner coming back and unlocking is the disarm. Subscribed for the
         // life of the app rather than only while armed: an unlock that arrives
         // during the window where we are tearing down would otherwise be missed.
@@ -386,10 +390,17 @@ public final class AppModel: ObservableObject {
         // Lid-close sleep cannot be cancelled, but withholding the
         // acknowledgement stalls it for the system's 30-second timeout. Asked
         // fresh each time, so a Mac that is not firing sleeps as it always did.
-        sleepDeferrer.start { [weak self] in self?.isFiring ?? false }
+        // The grace period counts too: a sleep that starts while it runs fires
+        // the alarm (below), and the deferral is what gives it time to sound.
+        sleepDeferrer.start { [weak self] in
+            guard let self else { return false }
+            return self.isFiring || self.isInGrace
+        }
         systemSleep.startObserving(
             onWillSleep: { [weak self] in
-                guard let self, self.isFiring else { return }
+                guard let self else { return }
+                self.engine.systemWillSleep()
+                guard self.isFiring else { return }
                 Task { await self.alertResponse.sendSleepNotice() }
             },
             onDidWake: { [weak self] in
@@ -535,8 +546,10 @@ public final class AppModel: ObservableObject {
     /// Re-read rather than remembered: approval happens in System Settings,
     /// outside this app, and can be withdrawn there just as easily.
     public func refreshLidHelperState() {
-        keepsAudibleWithLidClosed = lidSleep.isAvailable
+        // The description first: it re-asks sudo, and the availability read
+        // after it uses that fresh answer.
         lidHelperState = lidSleep.stateDescription
+        keepsAudibleWithLidClosed = lidSleep.isAvailable
     }
 
     public func setLidHoldSeconds(_ seconds: TimeInterval) {
@@ -871,6 +884,7 @@ public final class AppModel: ObservableObject {
 
     public var isArmed: Bool { state != .disarmed }
     public var isFiring: Bool { if case .firing = state { return true }; return false }
+    var isInGrace: Bool { if case .grace = state { return true }; return false }
 
     /// Settable whenever disarmed. The armed guard is the whole protection: it
     /// stops the obvious bypass of setting a new passcode mid-alarm and using it

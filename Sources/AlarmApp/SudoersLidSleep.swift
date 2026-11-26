@@ -41,11 +41,30 @@ public final class SudoersLidSleepSuppressor: LidSleepSuppressing {
     /// Asks sudo, rather than trusting the file to exist: the rule can be
     /// present and still not apply, and a feature that reports itself available
     /// when it is not is the failure this whole area keeps producing.
+    ///
+    /// Cached, because it is read on every alarm state change, ahead of the
+    /// siren. It used to run `sudo pmset -a disablesleep 0` to find out, on the
+    /// main thread: that delayed the siren and released any active hold every
+    /// time anything asked. `sudo -n -l <command>` answers the same question
+    /// without changing anything. `stateDescription` re-asks, and so do
+    /// install and uninstall.
     public var isAvailable: Bool {
-        Self.shell("/usr/bin/sudo", ["-n", "/usr/bin/pmset", "-a", "disablesleep", "0"]) != nil
+        if let cachedAvailable { return cachedAvailable }
+        let available = Self.isPermitted()
+        cachedAvailable = available
+        return available
+    }
+    private var cachedAvailable: Bool?
+
+    /// `-l` lists whether the command is allowed instead of running it.
+    nonisolated static let availabilityCheck = ["-n", "-l", "/usr/bin/pmset", "-a", "disablesleep", "1"]
+
+    nonisolated static func isPermitted() -> Bool {
+        shell("/usr/bin/sudo", availabilityCheck) != nil
     }
 
     public var stateDescription: String {
+        cachedAvailable = nil
         guard FileManager.default.fileExists(atPath: Self.rulePath) else { return "not installed" }
         return isAvailable ? "enabled" : "installed but not permitted"
     }
@@ -71,6 +90,7 @@ public final class SudoersLidSleepSuppressor: LidSleepSuppressing {
 
         let command = Self.installCommand(rule: rule)
         let result = await Task.detached { Self.adminShell(command) }.value
+        cachedAvailable = nil
         guard result.output != nil else {
             log.error("helper install failed (\(result.status)): \(result.stderr, privacy: .public)")
             throw Self.adminFailure(from: result.stderr)
@@ -117,6 +137,7 @@ public final class SudoersLidSleepSuppressor: LidSleepSuppressing {
         await release()
         let command = "rm -f '\(Self.rulePath)'"
         _ = await Task.detached { Self.adminShell(command) }.value
+        cachedAvailable = nil
     }
 
     // MARK: - Hold
@@ -125,8 +146,12 @@ public final class SudoersLidSleepSuppressor: LidSleepSuppressing {
         let window = LidSleepSuppression.clampHold(seconds)
         let until = Int(Date().timeIntervalSince1970 + window)
         try? String(until).write(toFile: Self.holdFile, atomically: true, encoding: .utf8)
-        guard Self.shell("/usr/bin/sudo",
-                         ["-n", "/usr/bin/pmset", "-a", "disablesleep", "1"]) != nil else {
+        // Off the main thread: the siren is scheduled on it and must not wait
+        // for sudo.
+        let held = await Task.detached {
+            Self.shell("/usr/bin/sudo", ["-n", "/usr/bin/pmset", "-a", "disablesleep", "1"]) != nil
+        }.value
+        guard held else {
             log.notice("hold refused: sudo rule not in place")
             return false
         }
@@ -136,7 +161,9 @@ public final class SudoersLidSleepSuppressor: LidSleepSuppressing {
 
     public func release() async {
         try? FileManager.default.removeItem(atPath: Self.holdFile)
-        _ = Self.shell("/usr/bin/sudo", ["-n", "/usr/bin/pmset", "-a", "disablesleep", "0"])
+        _ = await Task.detached {
+            Self.shell("/usr/bin/sudo", ["-n", "/usr/bin/pmset", "-a", "disablesleep", "0"])
+        }.value
     }
 
     /// A detached shell that outlives this app. Without a daemon there is

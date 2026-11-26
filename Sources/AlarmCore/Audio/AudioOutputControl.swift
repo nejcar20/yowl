@@ -6,9 +6,33 @@ public struct AudioOutputState: Equatable, Sendable {
     public let volume: Float                       // main element, or channel 1
     public let muted: Bool
     public let channelVolumes: [UInt32: Float]     // empty when main element was used
+    /// The built-in speakers' own levels, when they were not the default
+    /// device. The siren forces them to full volume, unmuted; without this,
+    /// someone on headphones got their headphones back after a disarm and
+    /// speakers left at 100 %, which blasted the next time the headphones
+    /// disconnected.
+    public let builtInSpeakers: BuiltInSpeakerLevels?
 
     public init(deviceID: UInt32, volume: Float, muted: Bool,
-                channelVolumes: [UInt32: Float] = [:]) {
+                channelVolumes: [UInt32: Float] = [:],
+                builtInSpeakers: BuiltInSpeakerLevels? = nil) {
+        self.deviceID = deviceID
+        self.volume = volume
+        self.muted = muted
+        self.channelVolumes = channelVolumes
+        self.builtInSpeakers = builtInSpeakers
+    }
+}
+
+/// A device's levels without the "this was the default" meaning — what
+/// `AudioOutputState` carries for the built-in speakers.
+public struct BuiltInSpeakerLevels: Equatable, Sendable {
+    public let deviceID: UInt32
+    public let volume: Float
+    public let muted: Bool
+    public let channelVolumes: [UInt32: Float]
+
+    public init(deviceID: UInt32, volume: Float, muted: Bool, channelVolumes: [UInt32: Float] = [:]) {
         self.deviceID = deviceID
         self.volume = volume
         self.muted = muted
@@ -200,18 +224,29 @@ public final class CoreAudioOutputControl: AudioOutputControlling {
         guard let device = device else {
             return AudioOutputState(deviceID: 0, volume: 0, muted: false)
         }
-        let vol = volume(of: device)
+        let levels = self.levels(of: device)
+        // The speakers are about to be forced too, so their levels are part of
+        // what has to come back.
+        var speakers: BuiltInSpeakerLevels?
+        if let builtIn = builtInOutputDevice(), builtIn != device {
+            speakers = self.levels(of: builtIn)
+        }
+        return AudioOutputState(deviceID: levels.deviceID,
+                                volume: levels.volume,
+                                muted: levels.muted,
+                                channelVolumes: levels.channelVolumes,
+                                builtInSpeakers: speakers)
+    }
 
+    private func levels(of device: AudioDeviceID) -> BuiltInSpeakerLevels {
         // If main element has volume, use it. Otherwise capture all per-channel volumes.
         var addr = address(kAudioDevicePropertyVolumeScalar,
                            kAudioObjectPropertyScopeOutput)
         let hasMainVolume = AudioObjectHasProperty(AudioObjectID(device), &addr)
-        let channelVols = hasMainVolume ? [:] : allChannelVolumes(of: device)
-
-        return AudioOutputState(deviceID: UInt32(device),
-                                volume: vol,
-                                muted: isMuted(device),
-                                channelVolumes: channelVols)
+        return BuiltInSpeakerLevels(deviceID: UInt32(device),
+                                    volume: volume(of: device),
+                                    muted: isMuted(device),
+                                    channelVolumes: hasMainVolume ? [:] : allChannelVolumes(of: device))
     }
 
     public func forceMaxVolumeOnBuiltInSpeakers() throws {
@@ -245,14 +280,24 @@ public final class CoreAudioOutputControl: AudioOutputControlling {
 
     @discardableResult
     public func restore(_ state: AudioOutputState) -> Bool {
+        // The speakers first, while they may still be the default: then the
+        // owner's own device is what is left selected.
+        let speakersRestored = state.builtInSpeakers.map(restoreLevels) ?? true
         let device = AudioDeviceID(state.deviceID)
         _ = setDefaultOutputDevice(device)
+        let defaultRestored = restoreLevels(BuiltInSpeakerLevels(
+            deviceID: state.deviceID, volume: state.volume,
+            muted: state.muted, channelVolumes: state.channelVolumes))
+        return speakersRestored && defaultRestored
+    }
 
+    private func restoreLevels(_ levels: BuiltInSpeakerLevels) -> Bool {
+        let device = AudioDeviceID(levels.deviceID)
         // If per-channel volumes were captured, restore each channel individually.
         var volumeSuccess = true
-        if !state.channelVolumes.isEmpty {
+        if !levels.channelVolumes.isEmpty {
             let size = UInt32(MemoryLayout<Float32>.size)
-            for (channel, volume) in state.channelVolumes {
+            for (channel, volume) in levels.channelVolumes {
                 var v = Float32(volume)
                 var addr = AudioObjectPropertyAddress(
                     mSelector: kAudioDevicePropertyVolumeScalar,
@@ -265,11 +310,11 @@ public final class CoreAudioOutputControl: AudioOutputControlling {
             }
         } else {
             // Otherwise restore main-element volume.
-            let (success, _) = setVolume(state.volume, on: device)
+            let (success, _) = setVolume(levels.volume, on: device)
             volumeSuccess = success
         }
 
-        let (muteSuccess, _) = setMuted(state.muted, on: device)
+        let (muteSuccess, _) = setMuted(levels.muted, on: device)
 
         // Return success only if all steps succeeded.
         return volumeSuccess && muteSuccess

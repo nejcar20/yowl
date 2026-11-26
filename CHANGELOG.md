@@ -15,6 +15,16 @@ Full notes for each release are on the
   [Microsoft Store](https://apps.microsoft.com/detail/9NM387X4WVV2).
 
 ### Fixed
+- **Shutting the lid during the grace period fires the alarm at once.** Before,
+  the Mac slept normally and nothing sounded, photographed or alerted until the
+  lid was opened again.
+- **The siren starts without waiting for sudo**, and checking the lid-closed
+  helper no longer releases an active hold. The check used to run
+  `pmset disablesleep 0` on every alarm state change.
+- A `disablesleep` hold left behind by a logout or power-off mid-alarm is
+  released at the next launch.
+- **Disarming restores the built-in speakers' own volume and mute** when you
+  were on headphones, instead of leaving them at 100 %.
 - **Phone alerts attach only photographs from that alarm.** If the camera gave
   no frame, an alert used to attach the newest photos on disk, which could be
   an earlier alarm's. Mac and Windows.

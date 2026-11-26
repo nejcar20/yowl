@@ -17,25 +17,18 @@ _26 November 2026_
 Ordered by how much each one helps a thief or causes a missed alarm.
 
 ### Mac
-1. **Lid shut during the grace period gives no alarm.** Sleep is held off only
-   while firing (`AppModel.swift`, `updateLidSleepHold` and the sleep deferrer),
-   and the grace timer stops while asleep. Fire at once when sleep begins
-   during grace.
-2. **`SudoersLidSleepSuppressor.isAvailable` runs `sudo pmset disablesleep 0`**
-   on the main thread on every state change, before the siren starts, and
-   drops any active hold. Replace it with `sudo -n -l …` run off the main thread
-   and cached.
-3. **Disarm leaves the built-in speakers at 100 %** when the default device was
-   headphones. Save and restore the built-in device's volume and mute too.
-4. **An armed Mac is unlocked**, and `com.apple.screenIsUnlocked` can be posted
+1. **An armed Mac is unlocked**, and `com.apple.screenIsUnlocked` can be posted
    by any process. Option to lock on arm, and only accept an unlock after a lock
    has been seen.
-5. **Crash or logout mid-alarm leaves state behind**: the forced volume is only
-   in memory, and `applicationWillTerminate` does not release `disablesleep`.
-6. The hold file is in shared `/tmp` (`/tmp/.yowl-hold-until`). Move it to the
+2. **Crash mid-alarm leaves the forced volume behind**: the saved audio state is
+   only in memory. Persist it and restore at launch.
+3. The hold file is in shared `/tmp` (`/tmp/.yowl-hold-until`). Move it to the
    user's temp folder.
-7. Camera loss while armed is silent: no frame-age watchdog.
-8. `SleepDeferrer.releasePendingSleep()` has no caller.
+4. Camera loss while armed is silent: no frame-age watchdog.
+5. `SleepDeferrer.releasePendingSleep()` has no caller.
+6. The built-in speaker restore (`CoreAudioOutputControl.restore`) is verified
+   by build only; check by hand with headphones connected: arm, fire, disarm,
+   unplug the headphones.
 
 ### Windows
 1. **No lid trigger**, and the lid action is only overridden while sounding, so

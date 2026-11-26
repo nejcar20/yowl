@@ -194,6 +194,21 @@ public final class AlarmEngine {
         if case let .firing(id) = next { fireResponses(trigger: id) }
     }
 
+    /// The Mac is about to sleep during the grace period: end the grace and
+    /// fire now.
+    ///
+    /// The grace timer does not run while the Mac sleeps, and sleep is held
+    /// off only for a firing alarm. So pulling the charger and shutting the lid
+    /// inside the grace period gave no siren, no photographs and no alert until
+    /// someone opened the lid somewhere else. A lid shut on an alarm counting
+    /// down is not the owner coming back — the owner unlocks.
+    public func systemWillSleep() {
+        guard case .grace = state else { return }
+        graceWork?.cancel()
+        graceWork = nil
+        graceExpired()
+    }
+
     /// The Mac slept mid-alarm and has come back.
     ///
     /// Lid-close sleep cannot be prevented -- Apple's own header says the system

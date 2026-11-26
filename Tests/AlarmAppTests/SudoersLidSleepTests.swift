@@ -121,3 +121,15 @@ import Foundation
     #expect(result.status == 0, "\(result.stderr)")
     #expect(result.output == rule)
 }
+
+/// Asking whether the rule applies must not change anything. It used to run
+/// `pmset -a disablesleep 0`, so every state change — including the one that
+/// starts the siren — released an active hold, and spawned sudo on the main
+/// thread ahead of the siren.
+@Test func checkingAvailabilityRunsNothing() {
+    let args = SudoersLidSleepSuppressor.availabilityCheck
+    #expect(args.first == "-n", "never prompts")
+    #expect(args.contains("-l"), "lists the permission instead of running the command")
+    #expect(args.suffix(4) == ["/usr/bin/pmset", "-a", "disablesleep", "1"],
+            "asks about the exact command the rule grants")
+}

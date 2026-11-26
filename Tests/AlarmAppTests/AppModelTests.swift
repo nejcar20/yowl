@@ -452,6 +452,45 @@ func aRunningAlarmHoldsOffTheSleep() async throws {
     #expect(defers.wouldDefer())
 }
 
+/// Pulling the charger and shutting the lid inside the grace period used to
+/// give nothing at all: sleep was held off only while firing, and the grace
+/// timer stops while the Mac sleeps.
+@Test @MainActor
+func sleepingDuringTheGracePeriodFiresAtOnce() async throws {
+    let sleeps = FakeSystemSleepObserver()
+    let defers = FakeSleepDeferrer()
+    let power = FakePowerSourceMonitor(isOnACPower: true)
+    let player = FakeSirenPlayer()
+    let (model, _, _, _) = makeModel(sleeps: sleeps, power: power,
+                                     sirenPlayer: player, defers: defers)
+    model.setGraceSeconds(10)
+    model.arm()
+    power.simulateChange(isOnAC: false)
+    try await Task.sleep(nanoseconds: 150_000_000)
+    #expect(model.isFiring == false, "still counting down")
+    #expect(defers.wouldDefer(), "the sleep is held off during the grace period too")
+
+    sleeps.simulateWillSleep()
+    try await Task.sleep(nanoseconds: 150_000_000)
+
+    #expect(model.isFiring)
+    #expect(player.startCount >= 1)
+}
+
+/// A sleep with nothing triggered must not fire anything.
+@Test @MainActor
+func sleepingWhileArmedButUntriggeredStaysQuiet() async throws {
+    let sleeps = FakeSystemSleepObserver()
+    let player = FakeSirenPlayer()
+    let (model, _, _, _) = makeModel(sleeps: sleeps, sirenPlayer: player)
+    model.setGraceSeconds(10)
+    model.arm()
+    sleeps.simulateWillSleep()
+    try await Task.sleep(nanoseconds: 150_000_000)
+    #expect(model.isFiring == false)
+    #expect(player.startCount == 0)
+}
+
 /// And the moment the alarm is over it must stop holding sleep off, or an alarm
 /// app becomes an app that keeps your Mac awake.
 @Test @MainActor
