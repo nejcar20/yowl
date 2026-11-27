@@ -14,6 +14,12 @@ updates:
     directory: /windows
     schedule:
       interval: weekly
+    ignore:
+      # NAudio plays the siren. 3.0 replaced WasapiOut and ISampleProvider.Read,
+      # so moving to it is a rewrite of SpeakerAudio.cs that needs testing on
+      # real Windows audio, not a dependency bump.
+      - dependency-name: NAudio.Wasapi
+        update-types: ["version-update:semver-major"]
     groups:
       nuget:
         patterns: ["*"]

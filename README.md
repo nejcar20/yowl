@@ -223,19 +223,11 @@ the app, staple it, package and sign the image, notarise and staple that too.
 
 ## Contributing
 
-Bug reports are more useful than features right now. In particular:
-
-- **Does motion detection work at your desk?** Use "Test sensitivity" in
-  Settings, wave your hand, and tell me the number. Repetitive backgrounds
-  (blinds, tiles, brick) are known to defeat it and I would like real data on
-  how common that is.
-- **Did the alarm ever fire when it should not have?** That is the failure that
-  matters most.
-
-The test suite is the contribution guide: `swift test` runs over 300 tests, and
-anything touching a trigger, a response, or the privacy-facing behaviour needs
-one that fails when the change is reverted. Several bugs in this codebase
-shipped behind tests that passed against broken code, so that bar is deliberate.
+Bug reports are more useful than features right now, above all whether motion
+detection works at your desk and whether the alarm ever fired when it should
+not have. See [CONTRIBUTING.md](CONTRIBUTING.md) for how to report, build and
+send a change, and [SECURITY.md](SECURITY.md) for anything that defeats the
+alarm or leaks data.
 
 ## License
 
