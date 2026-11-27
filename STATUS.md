@@ -7,7 +7,8 @@ _26 November 2026_
   `brew install --cask nejcar20/tap/yowl`. Cut releases with
   `./Scripts/release.sh <version>`.
 - **Windows:** live in the [Microsoft
-  Store](https://apps.microsoft.com/detail/9NM387X4WVV2). The package comes from
+  Store](https://apps.microsoft.com/detail/9NM387X4WVV2). 1.4.0 submitted for
+  certification on 27 November 2026; it publishes automatically once it passes. The package comes from
   the `Windows` workflow. Store listing text is edited in Partner Center; the
   manifest description only seeds it.
 - **Changes:** see [CHANGELOG.md](CHANGELOG.md).
