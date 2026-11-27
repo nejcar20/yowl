@@ -27,12 +27,12 @@ jobs:
         working-directory: windows
     steps:
       - name: Check out source
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           persist-credentials: false
 
       - name: Set up .NET
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v6
         with:
           dotnet-version: "10.0.x"
 
@@ -73,7 +73,7 @@ jobs:
             -Publisher $env:MSIX_PUBLISHER -PublisherDisplayName $env:MSIX_PUBLISHER_DISPLAY_NAME
 
       - name: Upload the Store package
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: Yowl-store
           path: |
@@ -82,7 +82,7 @@ jobs:
           retention-days: 30
 
       - name: Upload Yowl.exe
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: Yowl-windows
           path: |
