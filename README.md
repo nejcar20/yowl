@@ -142,7 +142,7 @@ differences:
 brew install --cask nejcar20/tap/yowl
 ```
 
-Or **[download Yowl 1.3.2](https://github.com/nejcar20/yowl/releases/download/v1.3.2/Yowl-1.3.2.dmg)**
+Or **[download Yowl 1.4.0](https://github.com/nejcar20/yowl/releases/download/v1.4.0/Yowl-1.4.0.dmg)**
 — 1.5 MB, signed and notarised by Apple, so it opens with a double-click. Drag
 it to Applications.
 

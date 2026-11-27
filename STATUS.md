@@ -2,7 +2,7 @@
 
 _26 November 2026_
 
-- **Mac:** 1.3.2 is released, signed and notarised: [GitHub
+- **Mac:** 1.4.0 is released, signed and notarised: [GitHub
   releases](https://github.com/nejcar20/yowl/releases) and
   `brew install --cask nejcar20/tap/yowl`. Cut releases with
   `./Scripts/release.sh <version>`.
@@ -10,7 +10,7 @@ _26 November 2026_
   Store](https://apps.microsoft.com/detail/9NM387X4WVV2). The package comes from
   the `Windows` workflow. Store listing text is edited in Partner Center; the
   manifest description only seeds it.
-- **Unreleased on `main`:** see [CHANGELOG.md](CHANGELOG.md).
+- **Changes:** see [CHANGELOG.md](CHANGELOG.md).
 
 ## Open issues from the November 2026 review
 

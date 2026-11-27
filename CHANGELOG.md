@@ -3,7 +3,7 @@
 Full notes for each release are on the
 [releases page](https://github.com/nejcar20/yowl/releases).
 
-## Unreleased
+## 1.4.0 — 2026-11-27
 
 ### Changed
 - **Everything is on by default**: the charger, movement and lid triggers,
